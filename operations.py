@@ -248,11 +248,16 @@ class FitOptimizedStructureOperation:
     def __init__(self, context: SiestaContext):
         self.context = context
 
+    def _print_origin_structure(self):
+        print("Origin STRUCT.fdf information:")
+        self.context.struct.__repr__()
+
     @staticmethod
     def _distance_from_case_name(case_name):
         return float(case_name.split("distance_")[-1])
 
     def run(self, mode="Murnaghan", selection=None):
+        self._print_origin_structure()
         struct = self.context.struct.copy()
         atoms = struct._atoms
         cell = np.array(struct.get_cell(), copy=True)
