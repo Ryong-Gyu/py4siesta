@@ -1,7 +1,7 @@
 import numpy as np
 from NanoCore import s2
 
-from operations import siesta_eos
+from .operations import siesta_eos
 
 
 BANNER = """            \\\///
