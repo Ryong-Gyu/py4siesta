@@ -43,12 +43,20 @@ def _prompt_str(message: str) -> str:
     return input(message).strip()
 
 
+def _print_origin_structure(struct) -> None:
+    print("Origin STRUCT.fdf information:")
+    struct.__repr__()
+
+
 def main():
     print(BANNER)
     print(MENU)
     mode = _prompt_int("")
 
     vasp = siesta_eos()
+
+    if mode in {3, 4, 5, 6, 7}:
+        _print_origin_structure(vasp.struct)
 
     if mode == 1:
         kpt = []
