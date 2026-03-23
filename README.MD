@@ -7,7 +7,6 @@
 This project is based on the bundled `NanoCore` code included in this repository and related original work from **OORINano / YHKLab**.
 
 - Do **not** remove the original attribution/copyright context for `NanoCore` and OORINano.
-- Keep the copyright and ownership notices for the original upstream work intact.
 - This repository uses the local bundled `NanoCore` package; it does **not** require downloading `NanoCore` from an external source.
 
 ## Installation
@@ -17,22 +16,6 @@ This project is based on the bundled `NanoCore` code included in this repository
 ```bash
 git clone <repo-url>
 cd py4siesta
-```
-
-### Optional: create a virtual environment
-
-Linux/macOS:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
 ```
 
 ### Install
