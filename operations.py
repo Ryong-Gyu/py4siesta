@@ -23,16 +23,22 @@ def write_kpoint(kpoints):
         fileK.write("%endblock kgrid_Monkhorst_Pack\n")
 
 
-class siesta_eos:
+class SiestaContext:
     def __init__(self):
         self.root = Path(__file__).resolve().parent
         self.origin_dir = self.root / "origin"
         self.struct = s2.read_fdf(self.origin_dir / "input" / "STRUCT.fdf")
 
-    def kpoint_sampling(self, sym=1, kpoints=[1, 2, 3]):
-        struct = self.struct
 
-        base_dir = self.root / "01.kpoint_sampling"
+class KPointSamplingOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    def run(self, sym=1, kpoints=None):
+        if kpoints is None:
+            kpoints = [1, 2, 3]
+
+        base_dir = self.context.root / "01.kpoint_sampling"
 
         with working_dir(base_dir):
             for k in kpoints:
@@ -45,15 +51,23 @@ class siesta_eos:
 
                 case_dir = Path(dirname)
                 with working_dir(case_dir):
-                    copy_contents(self.origin_dir, Path.cwd())
+                    copy_contents(self.context.origin_dir, Path.cwd())
                     write_kpoint(kpoints=current_kpoints)
                     shutil.move("KPT.fdf", Path("input") / "KPT.fdf")
 
-    def eos_bulk(self, ratio_range=np.linspace(0.99, 1.01, 11)):
-        struct = self.struct
+
+class BulkEosOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    def run(self, ratio_range=None):
+        if ratio_range is None:
+            ratio_range = np.linspace(0.99, 1.01, 11)
+
+        struct = self.context.struct
         pos = [x._position for x in struct._atoms]
 
-        base_dir = self.root / "02.volume_eos"
+        base_dir = self.context.root / "02.volume_eos"
         if base_dir.exists():
             shutil.rmtree(base_dir)
         base_dir.mkdir()
@@ -61,12 +75,11 @@ class siesta_eos:
         with working_dir(base_dir):
             for ir, r in enumerate(ratio_range):
                 struct2 = copy.copy(struct)
-                atoms = struct2._atoms
-                natm = len(atoms)
+                natm = len(struct2._atoms)
 
                 case_dir = Path(f"{ir+1:02d}-{r:4.3f}")
                 with working_dir(case_dir):
-                    copy_contents(self.origin_dir, Path.cwd())
+                    copy_contents(self.context.origin_dir, Path.cwd())
 
                     for iatom in range(natm):
                         pos2 = Vector(r * pos[iatom])
@@ -77,25 +90,31 @@ class siesta_eos:
                     s2.Siesta(struct2).write_struct()
                     shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
 
-    def eos_slab(self, ratio_range=np.linspace(0.98, 1.02, 11)):
-        struct = self.struct
+
+class SlabEosOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    def run(self, ratio_range=None):
+        if ratio_range is None:
+            ratio_range = np.linspace(0.98, 1.02, 11)
+
+        struct = self.context.struct
         pos = [x._position for x in struct._atoms]
 
-        base_dir = self.root / "02.slab_eos"
+        base_dir = self.context.root / "02.slab_eos"
         if base_dir.exists():
             shutil.rmtree(base_dir)
         base_dir.mkdir()
 
         with working_dir(base_dir):
             for ir, r in enumerate(ratio_range):
-
                 struct2 = copy.copy(struct)
-                atoms = struct2._atoms
-                natm = len(atoms)
+                natm = len(struct2._atoms)
 
                 case_dir = Path(f"{ir+1:02d}-{r:4.3f}")
                 with working_dir(case_dir):
-                    copy_contents(self.origin_dir, Path.cwd())
+                    copy_contents(self.context.origin_dir, Path.cwd())
 
                     for iatom in range(natm):
                         pos2 = Vector(r * pos[iatom])
@@ -106,61 +125,46 @@ class siesta_eos:
                     s2.Siesta(struct2).write_struct()
                     shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
 
-    def image_layer(self, struct, displacement=np.array([0, 0, 0])):
 
+class LayerEosOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    @staticmethod
+    def image_layer(struct, displacement=np.array([0, 0, 0])):
         struct2 = copy.copy(struct)
         pos = [x._position for x in struct2._atoms]
-        atoms = struct2._atoms
-        natm = len(atoms)
+        natm = len(struct2._atoms)
         struct3 = struct2 * [1, 1, 2]
 
         for iatom in range(natm):
             pos2 = Vector(pos[iatom])
-            pos2 = pos2 + Vector(displacement)  # shift
+            pos2 = pos2 + Vector(displacement)
             struct3._atoms[iatom + natm].set_position(pos2)
         vector = copy.copy(struct2._cell)
         struct3._cell = vector
 
         return struct3
 
-    def move(self, struct, displacement=np.array([0, 0, 0])):
+    def run(self, shift=np.array([0, 0, 0]), displacement=3.3, ratio_range=None):
+        if ratio_range is None:
+            ratio_range = np.linspace(0.9, 1.1, 11)
 
-        struct2 = copy.copy(struct)
-        pos = [x._position for x in struct2._atoms]
-        atoms = struct2._atoms
-        natm = len(atoms)
+        struct = self.context.struct
 
-        for iatom in range(natm):
-            pos2 = Vector(pos[iatom])
-            pos2 = pos2 + Vector(displacement)  # shift
-            struct2._atoms[iatom].set_position(pos2)
-        vector = copy.copy(struct2._cell)
-        struct2._cell = vector
-
-        return struct2
-
-    def eos_layer(self, shift=np.array([0, 0, 0]), displacement=3.3, ratio_range=np.linspace(0.9, 1.1, 11)):
-
-        struct = self.struct
-        pos = [x._position for x in struct._atoms]
-
-        base_dir = self.root / "02.layer_eos"
+        base_dir = self.context.root / "02.layer_eos"
         if base_dir.exists():
             shutil.rmtree(base_dir)
         base_dir.mkdir()
 
         with working_dir(base_dir):
             for ir, r in enumerate(ratio_range):
-
                 struct2 = copy.copy(struct)
-                atoms = struct2._atoms
-                natm = len(atoms)
-
                 disp = copy.copy(displacement * r)
 
                 case_dir = Path(f"{ir+1:02d}-{disp:5.4f}")
                 with working_dir(case_dir):
-                    copy_contents(self.origin_dir, Path.cwd())
+                    copy_contents(self.context.origin_dir, Path.cwd())
 
                     disp_vector = shift + np.array([0, 0, disp])
                     struct3 = self.image_layer(struct2, disp_vector)
@@ -168,22 +172,26 @@ class siesta_eos:
                     s2.Siesta(struct3).write_struct()
                     shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
 
-    def find_optimized_lattice(self, shift=np.array([0, 0, 0]), mode="Murnaghan"):
 
-        struct = copy.copy(self.struct)
+class FitOptimizedStructureOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    def run(self, shift=np.array([0, 0, 0]), mode="Murnaghan"):
+        struct = copy.copy(self.context.struct)
         atoms = struct._atoms
         cell = struct._cell
         init_volume = abs(np.dot(cell[2], np.cross(cell[0], cell[1])))
         init_lattice = np.sqrt(np.dot(cell[0], cell[0]))
 
         if mode == "Murnaghan":
-            base_dir = self.root / "02.volume_eos"
+            base_dir = self.context.root / "02.volume_eos"
         elif mode == "Polynomial":
-            base_dir = self.root / "02.slab_eos"
+            base_dir = self.context.root / "02.slab_eos"
         elif mode == "Layer":
-            base_dir = self.root / "02.layer_eos"
+            base_dir = self.context.root / "02.layer_eos"
         else:
-            base_dir = self.root
+            base_dir = self.context.root
 
         if not base_dir.exists():
             raise FileNotFoundError(f"{base_dir} does not exist")
@@ -231,53 +239,44 @@ class siesta_eos:
         coeff_poly_4nd = plt.polyfit(lattice, energy, 4)
         coeff_poly_2nd = plt.polyfit(lattice, energy, 2)
 
-        # initial coefficient of murnaghan
         v0 = -b / (2 * a)
         e0 = a * v0 ** 2 + b * v0 + c
         b0 = 2 * a * v0
         bP = 4
         x0 = [e0, b0, bP, v0]
 
-        # Define Murnaghan equation of state function
-        def Murnaghan(parameters, vol):
-            E0 = parameters[0]
-            B0 = parameters[1]
-            BP = parameters[2]
-            V0 = parameters[3]
-            E = E0 + B0 * vol / BP * (((V0 / vol) ** BP) / (BP - 1) + 1) - V0 * B0 / (BP - 1.0)
-            return E
+        def murnaghan(parameters, vol):
+            e0_local = parameters[0]
+            b0_local = parameters[1]
+            bp_local = parameters[2]
+            v0_local = parameters[3]
+            return e0_local + b0_local * vol / bp_local * (((v0_local / vol) ** bp_local) / (bp_local - 1) + 1) - v0_local * b0_local / (bp_local - 1.0)
 
-        # Define Polynomial equation of state function
-        def Polynomial(parameters, x):
-            A = parameters[0]
-            B = parameters[1]
-            C = parameters[2]
-            D = parameters[3]
-            E = parameters[4]
-            Y = A * x ** 4 + B * x ** 3 + C * x ** 2 + D * x + E
-            return Y
+        def polynomial(parameters, x):
+            a_local = parameters[0]
+            b_local = parameters[1]
+            c_local = parameters[2]
+            d_local = parameters[3]
+            e_local = parameters[4]
+            return a_local * x ** 4 + b_local * x ** 3 + c_local * x ** 2 + d_local * x + e_local
 
-        def Polynomial_2nd(parameters, x):
-            A = parameters[0]
-            B = parameters[1]
-            C = parameters[2]
-            Y = A * x ** 2 + B * x + C
-            return Y
+        def polynomial_2nd(parameters, x):
+            a_local = parameters[0]
+            b_local = parameters[1]
+            c_local = parameters[2]
+            return a_local * x ** 2 + b_local * x + c_local
 
-        # initial function of polynomial
-        func_poly_4nd = lambda x: Polynomial(coeff_poly_4nd, x)
-        func_poly_2nd = lambda x: Polynomial_2nd(coeff_poly_2nd, x)
+        func_poly_4nd = lambda x: polynomial(coeff_poly_4nd, x)
+        func_poly_2nd = lambda x: polynomial_2nd(coeff_poly_2nd, x)
 
-        # Define loss function for Murnaghan
         def loss_function(parameters, y, x):
-            loss = y - Murnaghan(parameters, x)
-            return loss
+            return y - murnaghan(parameters, x)
 
         if mode == "Murnaghan":
             vfit = np.linspace(min(volume), max(volume), 100)
             opt_coeff, ier = leastsq(loss_function, x0, args=(energy, volume))
             opt_volume = opt_coeff[3]
-            opt_func = Murnaghan(opt_coeff, vfit)
+            opt_func = murnaghan(opt_coeff, vfit)
 
             ratio = (opt_volume / init_volume) ** (1 / 3)
 
@@ -292,7 +291,7 @@ class siesta_eos:
             vfit = np.linspace(min(lattice), max(lattice), 100)
             opt_lattice = fminbound(func_poly_4nd, min(lattice), max(lattice))
             opt_energy = func_poly_4nd(opt_lattice)
-            opt_func = Polynomial(coeff_poly_4nd, vfit)
+            opt_func = polynomial(coeff_poly_4nd, vfit)
 
             ratio = opt_lattice / init_lattice
 
@@ -305,14 +304,13 @@ class siesta_eos:
             plt.plot(lattice, energy, "ro")
 
         elif mode == "Layer":
-
             vfit = np.linspace(min(lattice), max(lattice), 100)
             opt_lattice = fminbound(func_poly_4nd, min(lattice), max(lattice))
             opt_energy = func_poly_4nd(opt_lattice)
-            opt_func = Polynomial(coeff_poly_4nd, vfit)
+            opt_func = polynomial(coeff_poly_4nd, vfit)
 
             disp_vector = shift + np.array([0, 0, opt_lattice])
-            struct = self.image_layer(struct, disp_vector)
+            struct = LayerEosOperation(self.context).image_layer(struct, disp_vector)
 
             vector = cell
             struct._cell = vector
@@ -322,18 +320,21 @@ class siesta_eos:
             plt.plot(vfit, opt_func)
             plt.savefig("eos_fitting.png")
 
-            copy_contents(self.origin_dir, optimized_dir)
+            copy_contents(self.context.origin_dir, optimized_dir)
             with working_dir(optimized_dir):
                 s2.Siesta(struct).write_struct()
                 shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
 
-    def qsub(self, mode):
 
+class JobSubmissionOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    def run(self, mode):
         if mode == "kpt":
-            targets = sorted(self.root.glob("01.*"))
-
+            targets = sorted(self.context.root.glob("01.*"))
         elif mode == "opt":
-            targets = sorted(self.root.glob("02.*"))
+            targets = sorted(self.context.root.glob("02.*"))
         else:
             targets = []
 
@@ -348,3 +349,58 @@ class siesta_eos:
                 with working_dir(subdir):
                     for script in sorted(Path.cwd().glob("slm_*")):
                         subprocess.run(["sbatch", str(script)], check=True)
+
+
+class MoveStructureOperation:
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    def run(self, struct, displacement=np.array([0, 0, 0])):
+        struct2 = copy.copy(struct)
+        pos = [x._position for x in struct2._atoms]
+        natm = len(struct2._atoms)
+
+        for iatom in range(natm):
+            pos2 = Vector(pos[iatom])
+            pos2 = pos2 + Vector(displacement)
+            struct2._atoms[iatom].set_position(pos2)
+        vector = copy.copy(struct2._cell)
+        struct2._cell = vector
+
+        return struct2
+
+
+class siesta_eos:
+    def __init__(self):
+        self.context = SiestaContext()
+        self.root = self.context.root
+        self.origin_dir = self.context.origin_dir
+        self.struct = self.context.struct
+        self._kpoint_sampling = KPointSamplingOperation(self.context)
+        self._bulk_eos = BulkEosOperation(self.context)
+        self._slab_eos = SlabEosOperation(self.context)
+        self._layer_eos = LayerEosOperation(self.context)
+        self._fit_optimized_structure = FitOptimizedStructureOperation(self.context)
+        self._job_submission = JobSubmissionOperation(self.context)
+        self._move_structure = MoveStructureOperation(self.context)
+
+    def kpoint_sampling(self, sym=1, kpoints=None):
+        return self._kpoint_sampling.run(sym=sym, kpoints=kpoints)
+
+    def eos_bulk(self, ratio_range=None):
+        return self._bulk_eos.run(ratio_range=ratio_range)
+
+    def eos_slab(self, ratio_range=None):
+        return self._slab_eos.run(ratio_range=ratio_range)
+
+    def eos_layer(self, shift=np.array([0, 0, 0]), displacement=3.3, ratio_range=None):
+        return self._layer_eos.run(shift=shift, displacement=displacement, ratio_range=ratio_range)
+
+    def find_optimized_lattice(self, shift=np.array([0, 0, 0]), mode="Murnaghan"):
+        return self._fit_optimized_structure.run(shift=shift, mode=mode)
+
+    def qsub(self, mode):
+        return self._job_submission.run(mode)
+
+    def move(self, struct, displacement=np.array([0, 0, 0])):
+        return self._move_structure.run(struct, displacement=displacement)
