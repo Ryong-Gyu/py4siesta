@@ -23,3 +23,7 @@ Execute the main script:
 ```bash
 python py4siesta.py
 
+
+### 4. Functionality
+
+

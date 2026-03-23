@@ -62,7 +62,7 @@ def _parse_sliding_vector(line: str) -> np.ndarray:
 def _prompt_sliding_vectors(mode_label: str):
     print(
         f"Enter {mode_label} sliding vectors one per line in the form 'v1 v2'.\n"
-        "Press Enter on an empty line to finish."
+        "(Press Enter on an empty line to finish)"
     )
     vectors = []
     while True:
@@ -154,13 +154,13 @@ def main():
         vasp.eos_slab()
 
     elif mode == 5:
-        selection = _prompt_str("Moving atom index range (e.g. 21-30 (from 21 to 30 atoms)): ")
+        selection = _prompt_str(f"Type atom index range to move (between 1 ~ {len(vasp.struct):d}): ")
         sliding_mode = _prompt_choice(
-            "Sliding displacement mode (1: fractional in a/b, 2: absolute in Ang): ",
+            "## Sliding displacement mode (1: vector, 2: absolute): ",
             {"1", "2"},
         )
         displacement_mode = "fractional" if sliding_mode == "1" else "absolute"
-        mode_label = "f_a f_b" if displacement_mode == "fractional" else "x y"
+        mode_label = "frac_a frac_b" if displacement_mode == "fractional" else "x y"
         vectors = _prompt_sliding_vectors(mode_label)
         sliding_cases = _prepare_sliding_cases(vasp.struct, displacement_mode, vectors)
         vasp.eos_sliding(
@@ -169,10 +169,10 @@ def main():
         )
 
     elif mode == 6:
+        selection = _prompt_str(f"Type atom index range to move (between 1 ~ {len(vasp.struct):d}): ")
         min_distance = vasp.get_distance_min(selection)
-        print(f"Current minimum z distance (in Ang): {min_distance:.6f}\n")
+        print(f"Current minimum z distance: {min_distance:.6f}\n")
 
-        selection = _prompt_str("Moving atom index range (e.g. 21-30 (from 21 to 30 atoms)): ")
         distance_start = _prompt_float("Distance start: ")
         distance_end = _prompt_float("Distance end: ")
         distance_npt = _prompt_int("Distance npt: ")
