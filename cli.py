@@ -77,7 +77,7 @@ def main():
         vasp.eos_slab()
 
     elif mode == 5:
-        selection = _prompt_str("Moving atom index range (e.g. 20-30): ")
+        selection = _prompt_str("Moving atom index range (e.g. 21-30 (from 21 to 30 atoms)): ")
         x_start = _prompt_float("Sliding x start: ")
         x_end = _prompt_float("Sliding x end: ")
         x_npt = _prompt_int("Sliding x npt: ")
@@ -91,7 +91,7 @@ def main():
         )
 
     elif mode == 6:
-        selection = _prompt_str("Moving atom index range (e.g. 20-30): ")
+        selection = _prompt_str("Moving atom index range (e.g. 21-30 (from 21 to 30 atoms)): ")
         min_distance = vasp.get_distance_min(selection)
         print(f"Current minimum z distance: {min_distance:.6f}")
         distance_start = _prompt_float("Distance start: ")
