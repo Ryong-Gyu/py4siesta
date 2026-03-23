@@ -7,7 +7,7 @@ name = "py4siesta"
 version = "1.0.0"
 description = "Utilities and CLI helpers for preparing SIESTA calculations"
 readme = "README.MD"
-requires-python = ">=3.9"
+requires-python = ">=3.7"
 dependencies = [
   "matplotlib",
   "numpy",
