@@ -1,38 +1,141 @@
-## Py4siesta Utilities
+# py4siesta
 
-### Based on NanoCore libraries (recent version: [**OORINano**](https://github.com/yhkimlab/OORINano) from YHKLab) 
+`py4siesta` is a CLI utility for preparing and organizing SIESTA calculation cases.
 
+## Important notice
 
-This repository provides helper scripts for SIESTA calculations, wrapping and extending the NanoCore Python tools.
+This project is based on the bundled `NanoCore` code included in this repository and related original work from **OORINano / YHKLab**.
 
-### 1. Set up the environment
+- Do **not** remove the original attribution/copyright context for `NanoCore` and OORINano.
+- Keep the copyright and ownership notices for the original upstream work intact.
+- This repository uses the local bundled `NanoCore` package; it does **not** require downloading `NanoCore` from an external source.
 
-Prepare the NanoCore library by moving the Python library directory to your working environment.
+## Installation
 
-### 2. Prepare reference calculations
-
-Create the directory `origin` containing:
-
-- **`input/`** – SIESTA input (`.fdf`) files  
-- **`slm_siesta_run`** – Slurm job script for running SIESTA
-
-### 3. Run Py4siesta
-
-Execute the main script:
+### Clone the repository
 
 ```bash
-python py4siesta.py
+git clone <repo-url>
+cd py4siesta
 ```
 
-### 4. Functionality
+### Optional: create a virtual environment
 
-**1) Kpoint Sampling - Bulk**: Generate bulk calculation cases with isotropic `k x k x k` Monkhorst-Pack meshes.
-**2) Kpoint Sampling - Slab**: Generate slab calculation cases with in-plane `k x k x 1` meshes for surface models.
-**3) Structure Optimization - Bulk**: Create bulk EOS structures while choosing which lattice directions (`x y z`) are scaled.
-**4) Structure Optimization - Slab**: Create slab EOS structures with in-plane scaling and an optional z-direction scale for layered materials.
-**5) Structure Optimization - Sliding**: Build cases by translating selected atoms laterally to scan stacking or interface registry.
-**6) Structure Optimization - Distance**: Build cases by changing the vertical distance between selected atoms and the remaining structure.
-**7) Fitting**: Analyze completed EOS or distance calculations and generate an optimized structure from the fitted energy curve.
-**8) Job Submission - Kpoint Sampling**: Submit all generated k-point sampling jobs with the prepared Slurm scripts.
-**9) Job Submission - Structure Optimization**: Submit all generated structure optimization jobs with the prepared Slurm scripts.
-**10) move**: Translate the entire structure by a user-defined displacement vector and write a new `STRUCT.fdf`.
+Linux/macOS:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### Install
+
+Standard install:
+
+```bash
+pip install .
+```
+
+Editable install:
+
+```bash
+pip install -e .
+```
+
+## Dependencies
+
+The package declares these runtime dependencies:
+
+- `numpy`
+- `scipy`
+- `matplotlib`
+
+The repository also includes the private/bundled `NanoCore` module used by the CLI.
+
+### About `NanoCore`
+
+`NanoCore` is imported locally from this repository.
+
+That means:
+
+- `python -m py4siesta` works from this repository because the bundled `NanoCore/` package is present locally
+- `pip install .` or `pip install -e .` from this repository installs both `py4siesta` and the bundled `NanoCore` package defined in `pyproject.toml`
+- there is no need to fetch `NanoCore` from an external site or package index
+
+## Running the program
+
+Run from the repository root as a module:
+
+```bash
+python -m py4siesta
+```
+
+Or, after installation, run the console command:
+
+```bash
+py4siesta
+```
+
+## Required working directory layout
+
+Before running the program, create an `origin` directory in your working directory.
+
+Example:
+
+```text
+origin/
+├── input/
+│   └── STRUCT.fdf
+└── slm_siesta_run
+```
+
+Required files:
+
+- `origin/input/STRUCT.fdf`
+- one or more job scripts in `origin` matching `slm_*`
+
+The tool copies this reference input and creates calculation case directories from it.
+
+## Features
+
+1. **K-point Sampling - Bulk**  
+   Generate bulk calculation cases using isotropic `k x k x k` Monkhorst-Pack meshes.
+2. **K-point Sampling - Slab**  
+   Generate slab calculation cases using in-plane `k x k x 1` meshes.
+3. **Structure Optimization - Bulk**  
+   Create bulk EOS structures while choosing which lattice directions (`x y z`) are scaled.
+4. **Structure Optimization - Slab**  
+   Create slab EOS structures with in-plane-focused scaling.
+5. **Structure Optimization - Sliding**  
+   Build cases by translating selected atoms laterally to scan stacking or interface registry.
+6. **Structure Optimization - Distance**  
+   Build cases by changing the vertical distance between selected atoms and the remaining structure.
+7. **Fitting**  
+   Analyze completed EOS or distance calculations and generate an optimized structure from the fitted energy curve.
+8. **Job Submission - K-point Sampling**  
+   Submit generated k-point sampling jobs.
+9. **Job Submission - Structure Optimization**  
+   Submit generated structure-optimization jobs.
+10. **Move structure**  
+    Translate the entire structure by a user-defined displacement vector and write a new `STRUCT.fdf`.
+
+## Quick usage summary
+
+Development usage:
+
+```bash
+python -m py4siesta
+```
+
+Installed usage:
+
+```bash
+py4siesta
+```

@@ -9,7 +9,7 @@ from scipy.optimize import fminbound, leastsq
 
 from NanoCore import *
 
-from utils import copy_contents, last_matching_line, working_dir
+from .utils import copy_contents, last_matching_line, working_dir
 
 
 class SiestaContext:
