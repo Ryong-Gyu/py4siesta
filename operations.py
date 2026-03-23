@@ -1,4 +1,3 @@
-import copy
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,22 +11,23 @@ from NanoCore import *
 from utils import copy_contents, last_matching_line, working_dir
 
 
-def write_kpoint(kpoints):
-    """Write a Monkhorst-Pack k-point grid to ``KPT.fdf``."""
-
-    with open("KPT.fdf", "w") as fileK:
-        fileK.write("%block kgrid_Monkhorst_Pack\n")
-        fileK.write("   %i   0   0   0.0\n" % kpoints[0])
-        fileK.write("   0   %i   0   0.0\n" % kpoints[1])
-        fileK.write("   0   0   %i   0.0\n" % kpoints[2])
-        fileK.write("%endblock kgrid_Monkhorst_Pack\n")
-
-
 class SiestaContext:
     def __init__(self):
         self.root = Path(__file__).resolve().parent
         self.origin_dir = self.root / "origin"
         self.struct = s2.read_fdf(self.origin_dir / "input" / "STRUCT.fdf")
+
+    @staticmethod
+    def write_struct(struct, destination):
+        s2.Siesta(struct).write_struct()
+        shutil.move("STRUCT.fdf", destination / "STRUCT.fdf")
+
+    @staticmethod
+    def write_kpt(struct, kpoints, destination):
+        simulation = s2.Siesta(struct)
+        simulation.set_option("kgrid", list(kpoints))
+        simulation.write_kpt()
+        shutil.move("KPT.fdf", destination / "KPT.fdf")
 
 
 class KPointSamplingOperation:
@@ -52,20 +52,30 @@ class KPointSamplingOperation:
                 case_dir = Path(dirname)
                 with working_dir(case_dir):
                     copy_contents(self.context.origin_dir, Path.cwd())
-                    write_kpoint(kpoints=current_kpoints)
-                    shutil.move("KPT.fdf", Path("input") / "KPT.fdf")
+                    self.context.write_kpt(self.context.struct, current_kpoints, Path("input"))
 
 
 class BulkEosOperation:
     def __init__(self, context: SiestaContext):
         self.context = context
 
+    @staticmethod
+    def _scaled_structure(struct, cell_transform, position_transform=None):
+        scaled_struct = struct.copy()
+        scaled_struct.set_cell(cell_transform(np.array(struct.get_cell(), copy=True)))
+
+        if position_transform is not None:
+            scaled_positions = [position_transform(np.array(atom.get_position(), copy=True)) for atom in struct]
+            for atom, position in zip(scaled_struct._atoms, scaled_positions):
+                atom.set_position(Vector(position))
+
+        return scaled_struct
+
     def run(self, ratio_range=None):
         if ratio_range is None:
             ratio_range = np.linspace(0.99, 1.01, 11)
 
         struct = self.context.struct
-        pos = [x._position for x in struct._atoms]
 
         base_dir = self.context.root / "02.volume_eos"
         if base_dir.exists():
@@ -74,21 +84,16 @@ class BulkEosOperation:
 
         with working_dir(base_dir):
             for ir, r in enumerate(ratio_range):
-                struct2 = copy.copy(struct)
-                natm = len(struct2._atoms)
+                struct2 = self._scaled_structure(
+                    struct,
+                    cell_transform=lambda cell, ratio=r: ratio * cell,
+                    position_transform=lambda position, ratio=r: ratio * position,
+                )
 
                 case_dir = Path(f"{ir+1:02d}-{r:4.3f}")
                 with working_dir(case_dir):
                     copy_contents(self.context.origin_dir, Path.cwd())
-
-                    for iatom in range(natm):
-                        pos2 = Vector(r * pos[iatom])
-                        struct2._atoms[iatom].set_position(pos2)
-                    vector = copy.copy(struct._cell)
-                    vector2 = r * vector
-                    struct2._cell = vector2
-                    s2.Siesta(struct2).write_struct()
-                    shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
+                    self.context.write_struct(struct2, Path("input"))
 
 
 class SlabEosOperation:
@@ -100,7 +105,6 @@ class SlabEosOperation:
             ratio_range = np.linspace(0.98, 1.02, 11)
 
         struct = self.context.struct
-        pos = [x._position for x in struct._atoms]
 
         base_dir = self.context.root / "02.slab_eos"
         if base_dir.exists():
@@ -109,21 +113,20 @@ class SlabEosOperation:
 
         with working_dir(base_dir):
             for ir, r in enumerate(ratio_range):
-                struct2 = copy.copy(struct)
-                natm = len(struct2._atoms)
+                struct2 = BulkEosOperation._scaled_structure(
+                    struct,
+                    cell_transform=lambda cell, ratio=r: np.column_stack(
+                        (ratio * cell[:, 0], ratio * cell[:, 1], cell[:, 2])
+                    ),
+                    position_transform=lambda position, ratio=r: np.array(
+                        [ratio * position[0], ratio * position[1], position[2]]
+                    ),
+                )
 
                 case_dir = Path(f"{ir+1:02d}-{r:4.3f}")
                 with working_dir(case_dir):
                     copy_contents(self.context.origin_dir, Path.cwd())
-
-                    for iatom in range(natm):
-                        pos2 = Vector(r * pos[iatom])
-                        struct2._atoms[iatom].set_position(Vector(pos2))
-                    vector = copy.copy(struct._cell)
-                    vector[:, 0:2] = r * vector[:, 0:2]
-                    struct2._cell = vector
-                    s2.Siesta(struct2).write_struct()
-                    shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
+                    self.context.write_struct(struct2, Path("input"))
 
 
 class LayerEosOperation:
@@ -131,19 +134,23 @@ class LayerEosOperation:
         self.context = context
 
     @staticmethod
-    def image_layer(struct, displacement=np.array([0, 0, 0])):
-        struct2 = copy.copy(struct)
-        pos = [x._position for x in struct2._atoms]
-        natm = len(struct2._atoms)
+    def _translate_all(struct, displacement):
+        translated = struct.copy()
+        translated.select_all()
+        translated.translate(*np.asarray(displacement, dtype=float))
+        return translated
+
+    @classmethod
+    def image_layer(cls, struct, displacement=np.array([0, 0, 0])):
+        struct2 = struct.copy()
         struct3 = struct2 * [1, 1, 2]
+        natm = len(struct2._atoms)
+        translated_layer = cls._translate_all(struct2, displacement)
 
-        for iatom in range(natm):
-            pos2 = Vector(pos[iatom])
-            pos2 = pos2 + Vector(displacement)
-            struct3._atoms[iatom + natm].set_position(pos2)
-        vector = copy.copy(struct2._cell)
-        struct3._cell = vector
+        for index, atom in enumerate(translated_layer):
+            struct3._atoms[index + natm].set_position(atom.get_position())
 
+        struct3.set_cell(np.array(struct2.get_cell(), copy=True))
         return struct3
 
     def run(self, shift=np.array([0, 0, 0]), displacement=3.3, ratio_range=None):
@@ -159,8 +166,8 @@ class LayerEosOperation:
 
         with working_dir(base_dir):
             for ir, r in enumerate(ratio_range):
-                struct2 = copy.copy(struct)
-                disp = copy.copy(displacement * r)
+                struct2 = struct.copy()
+                disp = displacement * r
 
                 case_dir = Path(f"{ir+1:02d}-{disp:5.4f}")
                 with working_dir(case_dir):
@@ -169,8 +176,7 @@ class LayerEosOperation:
                     disp_vector = shift + np.array([0, 0, disp])
                     struct3 = self.image_layer(struct2, disp_vector)
 
-                    s2.Siesta(struct3).write_struct()
-                    shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
+                    self.context.write_struct(struct3, Path("input"))
 
 
 class FitOptimizedStructureOperation:
@@ -178,9 +184,9 @@ class FitOptimizedStructureOperation:
         self.context = context
 
     def run(self, shift=np.array([0, 0, 0]), mode="Murnaghan"):
-        struct = copy.copy(self.context.struct)
+        struct = self.context.struct.copy()
         atoms = struct._atoms
-        cell = struct._cell
+        cell = np.array(struct.get_cell(), copy=True)
         init_volume = abs(np.dot(cell[2], np.cross(cell[0], cell[1])))
         init_lattice = np.sqrt(np.dot(cell[0], cell[0]))
 
@@ -322,8 +328,7 @@ class FitOptimizedStructureOperation:
 
             copy_contents(self.context.origin_dir, optimized_dir)
             with working_dir(optimized_dir):
-                s2.Siesta(struct).write_struct()
-                shutil.move("STRUCT.fdf", Path("input") / "STRUCT.fdf")
+                self.context.write_struct(struct, Path("input"))
 
 
 class JobSubmissionOperation:
@@ -356,17 +361,9 @@ class MoveStructureOperation:
         self.context = context
 
     def run(self, struct, displacement=np.array([0, 0, 0])):
-        struct2 = copy.copy(struct)
-        pos = [x._position for x in struct2._atoms]
-        natm = len(struct2._atoms)
-
-        for iatom in range(natm):
-            pos2 = Vector(pos[iatom])
-            pos2 = pos2 + Vector(displacement)
-            struct2._atoms[iatom].set_position(pos2)
-        vector = copy.copy(struct2._cell)
-        struct2._cell = vector
-
+        struct2 = struct.copy()
+        struct2.select_all()
+        struct2.translate(*np.asarray(displacement, dtype=float))
         return struct2
 
 
