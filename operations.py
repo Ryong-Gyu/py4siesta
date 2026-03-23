@@ -196,23 +196,22 @@ class SlabEosOperation(BaseOperation):
 class SlidingOperation(BaseOperation):
     base_dirname = "02.sliding"
 
-    def case_parameters(self, selection, x_values, y_values):
+    def case_parameters(self, selection, sliding_cases):
         struct = self.context.struct
         self._print_structure_summary(struct)
         selected_serials, _ = self._validate_selection(struct, selection)
         return [
-            (selected_serials, float(dx), float(dy))
-            for dx in x_values
-            for dy in y_values
+            (selected_serials, str(case_label), np.asarray(displacement, dtype=float))
+            for case_label, displacement in sliding_cases
         ]
 
     def case_name(self, index, case_parameter):
-        _, dx, dy = case_parameter
-        return f"{index:02d}-dx_{dx:+0.4f}-dy_{dy:+0.4f}"
+        _, case_label, _ = case_parameter
+        return f"{index:02d}-{case_label}"
 
     def build_case_input(self, case_parameter):
-        selected_serials, dx, dy = case_parameter
-        return self._translate_selected(self.context.struct, selected_serials, [dx, dy, 0.0])
+        selected_serials, _, displacement = case_parameter
+        return self._translate_selected(self.context.struct, selected_serials, displacement)
 
 
 class DistanceOperation(BaseOperation):
@@ -463,8 +462,8 @@ class siesta_eos:
     def eos_slab(self, ratio_range=None):
         return self._slab_eos.run(ratio_range=ratio_range)
 
-    def eos_sliding(self, selection, x_values, y_values):
-        return self._sliding.run(selection=selection, x_values=x_values, y_values=y_values)
+    def eos_sliding(self, selection, sliding_cases):
+        return self._sliding.run(selection=selection, sliding_cases=sliding_cases)
 
     def get_distance_min(self, selection):
         return self._distance.current_distance(selection)
