@@ -13,7 +13,7 @@ from utils import copy_contents, last_matching_line, working_dir
 
 class SiestaContext:
     def __init__(self):
-        self.root = Path(__file__).resolve().parent
+        self.root = Path.cwd()
         self.origin_dir = self.root / "origin"
         self.struct = s2.read_fdf(self.origin_dir / "input" / "STRUCT.fdf")
 
@@ -97,7 +97,7 @@ class KPointSamplingOperation(BaseOperation):
 
     def case_parameters(self, sym=1, kpoints=None):
         if kpoints is None:
-            kpoints = [1, 2, 3]
+            kpoints = [1, 1, 1]
 
         if sym == 1:
             return [[k, k, k] for k in kpoints]

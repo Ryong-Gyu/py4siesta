@@ -10,7 +10,7 @@ BANNER = """            \\\///
  +-----.OOOo--()--oOOO.------------------------------------------+
  |                   Python Program for SIESTA                   |
  |             py4siesta Version: 1.00 (15 July. 2020)           |
- |            Developed by Rong     (ronggyulee@kaist.ac.kr)     |
+ |            Developed by RGLee    (ronggyulee@kaist.ac.kr)     |
  +-----.oooO-------------------------------------------------- --+
         (   )   Oooo.
          \\ (    (   )
@@ -24,7 +24,7 @@ MENU = """ ======================= Kpoint Sampling =========================
  3) Bulk    4) Slab    5) Layer    6) Fitting                     
  ======================= Job Submission ==========================
  7) Kpoint Sampling    8) Structure Optimization                  
- ============================ Utility ======--====================
+ ============================ Utility ============================
  9) move                  
 
  0) Quit

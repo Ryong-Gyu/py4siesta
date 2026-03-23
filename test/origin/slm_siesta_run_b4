@@ -23,9 +23,7 @@ OUT_DIR="OUT"
 
 RUN_FDF="RUN.fdf"
 
-#RUNBIN="$HOME/00.Development/0.GitHub/1.MSDFT/Local/ms-dft/Obj/transiesta"
 RUNBIN="$HOME/opt/siesta-4.1-b4_MS-DFT_ver3/Obj_fixed_rho/transiesta"
-#RUNBIN="$HOME/bin/msdft_exec/metagga_0.3v"
 #Remove scratch (YES/NO)
 RMSCRATCH="YES"
 
