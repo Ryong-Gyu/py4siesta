@@ -18,29 +18,47 @@ BANNER = """            \\\///
                 (_/
 """
 
-MENU = """ ======================= Kpoint Sampling =========================
+MENU = """ ======================= K-point Sampling ========================
  1) Bulk    2) Slab
  =================== Structure Optimization ======================
  3) Bulk    4) Slab    5) Sliding    6) Distance    7) Fitting
  ======================= Job Submission ==========================
- 8) Kpoint Sampling    9) Structure Optimization
+ 8) K-point Sampling    9) Structure Optimization
  ============================ Utility ============================
-10) move
+10) Move structure
 
  0) Quit
 """
 
 
+def _show_section(title: str) -> None:
+    print(f"\n[{title}]")
+
+
 def _prompt_float(message: str) -> float:
-    return float(input(message))
+    while True:
+        raw = input(message).strip()
+        try:
+            return float(raw)
+        except ValueError:
+            print("Please enter a valid number.")
 
 
 def _prompt_int(message: str) -> int:
-    return int(input(message))
+    while True:
+        raw = input(message).strip()
+        try:
+            return int(raw)
+        except ValueError:
+            print("Please enter a valid integer.")
 
 
 def _prompt_str(message: str) -> str:
-    return input(message).strip()
+    while True:
+        value = input(message).strip()
+        if value:
+            return value
+        print("Input cannot be empty.")
 
 
 def _prompt_choice(message: str, valid_choices) -> str:
@@ -50,6 +68,27 @@ def _prompt_choice(message: str, valid_choices) -> str:
         if choice in valid:
             return choice
         print(f"Please choose one of: {', '.join(sorted(valid))}")
+
+
+def _prompt_repeated_ints(message: str):
+    values = []
+    print("Press Enter on an empty line to finish.")
+    while True:
+        raw = input(message.format(index=len(values) + 1)).strip()
+        if not raw:
+            if values:
+                return values
+            print("Please enter at least one value.")
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            print("Please enter a valid integer.")
+            continue
+        if value <= 0:
+            print("Please enter a positive integer.")
+            continue
+        values.append(value)
 
 
 def _prompt_direction_mask(message: str, default):
@@ -62,7 +101,7 @@ def _prompt_direction_mask(message: str, default):
 
         tokens = raw.replace(',', ' ').split()
         if len(tokens) != 3:
-            print("Please enter exactly three values like '1 1 1' or '0 1 0'.")
+            print("Please enter exactly three values, e.g. '1 1 1' or '0 1 0'.")
             continue
 
         try:
@@ -87,12 +126,13 @@ def _parse_sliding_vector(line: str) -> np.ndarray:
 
 def _prompt_sliding_vectors(mode_label: str):
     print(
-        f"Enter {mode_label} sliding vectors one per line in the form 'v1 v2'.\n"
-        "(Press Enter on an empty line to finish)"
+        f"Enter {mode_label} sliding vectors one per line.\n"
+        f"Example: {mode_label}\n"
+        "Press Enter on an empty line to finish."
     )
     vectors = []
     while True:
-        line = input(f"{mode_label} vector #{len(vectors) + 1}: ").strip()
+        line = input(f"Input vector #{len(vectors) + 1}: ").strip()
         if not line:
             if vectors:
                 return vectors
@@ -102,6 +142,12 @@ def _prompt_sliding_vectors(mode_label: str):
             vectors.append(_parse_sliding_vector(line))
         except ValueError as exc:
             print(exc)
+
+
+def _prompt_atom_selection(struct_length: int, label: str = "atom index range to move") -> str:
+    return _prompt_str(
+        f"Input {label} [1-{struct_length}, e.g. 20-30]: "
+    )
 
 
 def _sliding_case_label(displacement_mode: str, components: np.ndarray) -> str:
@@ -145,7 +191,7 @@ def _print_origin_structure(struct) -> None:
 def main():
     print(BANNER)
     print(MENU)
-    mode = _prompt_int("")
+    mode = _prompt_int("Select menu number: ")
 
     vasp = siesta_eos()
 
@@ -154,48 +200,42 @@ def main():
         print("\n")
 
     if mode == 1:
-        kpt = []
-        while True:
-            k = _prompt_int("Type number of k points for calculation (0: quit): ")
-            if k == 0:
-                break
-            elif k > 0:
-                kpt.append(k)
+        _show_section("Bulk K-point sampling")
+        kpt = _prompt_repeated_ints("Input k-point value #{index}: ")
         vasp.kpoint_sampling(kpoints=kpt)
 
     elif mode == 2:
-        kpt = []
-        while True:
-            k = _prompt_int("Type number of kx (=ky) for calculation (0: quit): ")
-            if k == 0:
-                break
-            elif k > 0:
-                kpt.append([k, k, 1])
+        _show_section("Slab K-point sampling")
+        k_values = _prompt_repeated_ints("Input kx (= ky) value #{index}: ")
+        kpt = [[k, k, 1] for k in k_values]
         vasp.kpoint_sampling(sym=0, kpoints=kpt)
 
     elif mode == 3:
+        _show_section("Bulk structure optimization")
         scale_mask = _prompt_direction_mask(
-            "Bulk expansion direction (x y z)",
+            "Input bulk expansion direction (x y z)",
             default=[1, 1, 1],
         )
         vasp.eos_bulk(scale_mask=scale_mask)
 
     elif mode == 4:
+        _show_section("Slab structure optimization")
         include_z = _prompt_choice(
-            "Include z-direction scaling for slab? (y/n): ",
+            "Include z-direction scaling? (y/n): ",
             {"y", "n"},
         )
         scale_mask = [1, 1, 1] if include_z == "y" else [1, 1, 0]
         vasp.eos_slab(scale_mask=scale_mask)
 
     elif mode == 5:
-        selection = _prompt_str(f"Type atom index range to move (between 1 ~ {len(vasp.struct):d}): ")
+        _show_section("Sliding structure optimization")
+        selection = _prompt_atom_selection(len(vasp.struct))
         sliding_mode = _prompt_choice(
-            "## Sliding displacement mode (1: vector, 2: absolute): ",
+            "Input sliding displacement mode (1: fractional, 2: absolute): ",
             {"1", "2"},
         )
         displacement_mode = "fractional" if sliding_mode == "1" else "absolute"
-        mode_label = "frac_a frac_b" if displacement_mode == "fractional" else "x y"
+        mode_label = "0.25 0.50" if displacement_mode == "fractional" else "1.50 0.00"
         vectors = _prompt_sliding_vectors(mode_label)
         sliding_cases = _prepare_sliding_cases(vasp.struct, displacement_mode, vectors)
         vasp.eos_sliding(
@@ -204,29 +244,31 @@ def main():
         )
 
     elif mode == 6:
-        selection = _prompt_str(f"Type atom index range to move (between 1 ~ {len(vasp.struct):d}): ")
+        _show_section("Distance structure optimization")
+        selection = _prompt_atom_selection(len(vasp.struct))
         min_distance = vasp.get_distance_min(selection)
         print(f"Current minimum z distance: {min_distance:.6f}\n")
 
-        distance_start = _prompt_float("Distance start: ")
-        distance_end = _prompt_float("Distance end: ")
-        distance_npt = _prompt_int("Distance npt: ")
+        distance_start = _prompt_float("Input distance start: ")
+        distance_end = _prompt_float("Input distance end: ")
+        distance_npt = _prompt_int("Input number of distance points: ")
         vasp.eos_distance(
             selection=selection,
             distance_range=np.linspace(distance_start, distance_end, distance_npt),
         )
 
     elif mode == 7:
-        print("1) Bulk\n")
-        print("2) Slab\n")
+        _show_section("Structure fitting")
+        print("1) Bulk")
+        print("2) Slab")
         print("3) Distance\n")
-        select = _prompt_int(": ")
+        select = _prompt_int("Select fitting mode: ")
         if select == 1:
             vasp.find_optimized_lattice(mode="Murnaghan")
         elif select == 2:
             vasp.find_optimized_lattice(mode="Polynomial")
         elif select == 3:
-            selection = _prompt_str("Moving atom index range (e.g. 20-30): ")
+            selection = _prompt_atom_selection(len(vasp.struct), label="moving atom index range")
             vasp.find_optimized_lattice(mode="Distance", selection=selection)
 
     elif mode == 8:
@@ -236,18 +278,20 @@ def main():
         vasp.qsub("opt")
 
     elif mode == 10:
+        _show_section("Move structure")
         struct = vasp.struct
-        while True:
-            dx = _prompt_float("displacement dx: ")
-            dy = _prompt_float("displacement dy: ")
-            dz = _prompt_float("displacement dz: ")
-            break
+        dx = _prompt_float("Input displacement dx: ")
+        dy = _prompt_float("Input displacement dy: ")
+        dz = _prompt_float("Input displacement dz: ")
 
         struct2 = vasp.move(struct, displacement=np.array([dx, dy, dz]))
         s2.Siesta(struct2).write_struct()
 
     elif mode == 0:
-        pass
+        print("Exit py4siesta.")
+
+    else:
+        print("Unknown menu number. Please run the program again and choose a valid option.")
 
 
 if __name__ == "__main__":
