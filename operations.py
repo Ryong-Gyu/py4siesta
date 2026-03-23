@@ -17,47 +17,18 @@ class SiestaContext:
         self.origin_dir = self.root / "origin"
         self.struct = s2.read_fdf(self.origin_dir / "input" / "STRUCT.fdf")
 
-    @staticmethod
-    def write_struct(struct, destination):
-        s2.Siesta(struct).write_struct()
-        shutil.move("STRUCT.fdf", destination / "STRUCT.fdf")
-
-    @staticmethod
-    def write_kpt(struct, kpoints, destination):
-        simulation = s2.Siesta(struct)
-        simulation.set_option("kgrid", list(kpoints))
-        simulation.write_kpt()
-        shutil.move("KPT.fdf", destination / "KPT.fdf")
 
 
-class KPointSamplingOperation:
+class BaseOperation:
+    base_dirname = ""
+    output_name = "STRUCT.fdf"
+
     def __init__(self, context: SiestaContext):
         self.context = context
 
-    def run(self, sym=1, kpoints=None):
-        if kpoints is None:
-            kpoints = [1, 2, 3]
-
-        base_dir = self.context.root / "01.kpoint_sampling"
-
-        with working_dir(base_dir):
-            for k in kpoints:
-                if sym == 1:
-                    dirname = f"{k}+{k}+{k}"
-                    current_kpoints = [k, k, k]
-                else:
-                    dirname = f"{k[0]}+{k[1]}+{k[2]}"
-                    current_kpoints = k
-
-                case_dir = Path(dirname)
-                with working_dir(case_dir):
-                    copy_contents(self.context.origin_dir, Path.cwd())
-                    self.context.write_kpt(self.context.struct, current_kpoints, Path("input"))
-
-
-class BulkEosOperation:
-    def __init__(self, context: SiestaContext):
-        self.context = context
+    @property
+    def base_dir(self):
+        return self.context.root / self.base_dirname
 
     @staticmethod
     def _scaled_structure(struct, cell_transform, position_transform=None):
@@ -71,67 +42,118 @@ class BulkEosOperation:
 
         return scaled_struct
 
-    def run(self, ratio_range=None):
+    def prepare_base_dir(self):
+        base_dir = self.base_dir
+        if base_dir.exists():
+            shutil.rmtree(base_dir)
+        base_dir.mkdir()
+        return base_dir
+
+    def iter_cases(self, case_parameters):
+        for index, case_parameter in enumerate(case_parameters, start=1):
+            yield index, case_parameter
+
+    def prepare_case_dir(self, case_name):
+        return working_dir(Path(case_name))
+
+    def copy_origin(self):
+        copy_contents(self.context.origin_dir, Path.cwd())
+
+    def finalize_case(self, case_input):
+        destination = Path("input")
+        if self.output_name == "STRUCT.fdf":
+            s2.Siesta(case_input).write_struct()
+        elif self.output_name == "KPT.fdf":
+            simulation = s2.Siesta(self.context.struct)
+            simulation.set_option("kgrid", list(case_input))
+            simulation.write_kpt()
+        else:
+            raise ValueError(f"Unsupported output name: {self.output_name}")
+
+        shutil.move(self.output_name, destination / self.output_name)
+
+    def case_parameters(self, **kwargs):
+        raise NotImplementedError
+
+    def case_name(self, index, case_parameter):
+        raise NotImplementedError
+
+    def build_case_input(self, case_parameter):
+        raise NotImplementedError
+
+    def run(self, **kwargs):
+        self.prepare_base_dir()
+
+        with working_dir(self.base_dir):
+            for index, case_parameter in self.iter_cases(self.case_parameters(**kwargs)):
+                with self.prepare_case_dir(self.case_name(index, case_parameter)):
+                    self.copy_origin()
+                    self.finalize_case(self.build_case_input(case_parameter))
+
+
+class KPointSamplingOperation(BaseOperation):
+    base_dirname = "01.kpoint_sampling"
+    output_name = "KPT.fdf"
+
+    def case_parameters(self, sym=1, kpoints=None):
+        if kpoints is None:
+            kpoints = [1, 2, 3]
+
+        if sym == 1:
+            return [[k, k, k] for k in kpoints]
+        return [list(k) for k in kpoints]
+
+    def case_name(self, index, case_parameter):
+        return f"{case_parameter[0]}+{case_parameter[1]}+{case_parameter[2]}"
+
+    def build_case_input(self, case_parameter):
+        return case_parameter
+
+
+class BulkEosOperation(BaseOperation):
+    base_dirname = "02.volume_eos"
+
+    def case_parameters(self, ratio_range=None):
         if ratio_range is None:
             ratio_range = np.linspace(0.99, 1.01, 11)
+        return ratio_range
 
-        struct = self.context.struct
+    def case_name(self, index, case_parameter):
+        return f"{index:02d}-{case_parameter:4.3f}"
 
-        base_dir = self.context.root / "02.volume_eos"
-        if base_dir.exists():
-            shutil.rmtree(base_dir)
-        base_dir.mkdir()
-
-        with working_dir(base_dir):
-            for ir, r in enumerate(ratio_range):
-                struct2 = self._scaled_structure(
-                    struct,
-                    cell_transform=lambda cell, ratio=r: ratio * cell,
-                    position_transform=lambda position, ratio=r: ratio * position,
-                )
-
-                case_dir = Path(f"{ir+1:02d}-{r:4.3f}")
-                with working_dir(case_dir):
-                    copy_contents(self.context.origin_dir, Path.cwd())
-                    self.context.write_struct(struct2, Path("input"))
+    def build_case_input(self, case_parameter):
+        return self._scaled_structure(
+            self.context.struct,
+            cell_transform=lambda cell, ratio=case_parameter: ratio * cell,
+            position_transform=lambda position, ratio=case_parameter: ratio * position,
+        )
 
 
-class SlabEosOperation:
-    def __init__(self, context: SiestaContext):
-        self.context = context
+class SlabEosOperation(BaseOperation):
+    base_dirname = "02.slab_eos"
 
-    def run(self, ratio_range=None):
+    def case_parameters(self, ratio_range=None):
         if ratio_range is None:
             ratio_range = np.linspace(0.98, 1.02, 11)
+        return ratio_range
 
-        struct = self.context.struct
+    def case_name(self, index, case_parameter):
+        return f"{index:02d}-{case_parameter:4.3f}"
 
-        base_dir = self.context.root / "02.slab_eos"
-        if base_dir.exists():
-            shutil.rmtree(base_dir)
-        base_dir.mkdir()
-
-        with working_dir(base_dir):
-            for ir, r in enumerate(ratio_range):
-                struct2 = BulkEosOperation._scaled_structure(
-                    struct,
-                    cell_transform=lambda cell, ratio=r: np.column_stack(
-                        (ratio * cell[:, 0], ratio * cell[:, 1], cell[:, 2])
-                    ),
-                    position_transform=lambda position, ratio=r: np.array(
-                        [ratio * position[0], ratio * position[1], position[2]]
-                    ),
-                )
-
-                case_dir = Path(f"{ir+1:02d}-{r:4.3f}")
-                with working_dir(case_dir):
-                    copy_contents(self.context.origin_dir, Path.cwd())
-                    self.context.write_struct(struct2, Path("input"))
+    def build_case_input(self, case_parameter):
+        return self._scaled_structure(
+            self.context.struct,
+            cell_transform=lambda cell, ratio=case_parameter: np.column_stack(
+                (ratio * cell[:, 0], ratio * cell[:, 1], cell[:, 2])
+            ),
+            position_transform=lambda position, ratio=case_parameter: np.array(
+                [ratio * position[0], ratio * position[1], position[2]]
+            ),
+        )
 
 
-class LayerEosOperation:
-    def __init__(self, context: SiestaContext):
-        self.context = context
+class LayerEosOperation(BaseOperation):
+    base_dirname = "02.layer_eos"
 
     @staticmethod
     def _translate_all(struct, displacement):
@@ -153,30 +175,19 @@ class LayerEosOperation:
         struct3.set_cell(np.array(struct2.get_cell(), copy=True))
         return struct3
 
-    def run(self, shift=np.array([0, 0, 0]), displacement=3.3, ratio_range=None):
+    def case_parameters(self, shift=np.array([0, 0, 0]), displacement=3.3, ratio_range=None):
         if ratio_range is None:
             ratio_range = np.linspace(0.9, 1.1, 11)
+        return [(shift, displacement * ratio) for ratio in ratio_range]
 
-        struct = self.context.struct
+    def case_name(self, index, case_parameter):
+        _, displacement = case_parameter
+        return f"{index:02d}-{displacement:5.4f}"
 
-        base_dir = self.context.root / "02.layer_eos"
-        if base_dir.exists():
-            shutil.rmtree(base_dir)
-        base_dir.mkdir()
-
-        with working_dir(base_dir):
-            for ir, r in enumerate(ratio_range):
-                struct2 = struct.copy()
-                disp = displacement * r
-
-                case_dir = Path(f"{ir+1:02d}-{disp:5.4f}")
-                with working_dir(case_dir):
-                    copy_contents(self.context.origin_dir, Path.cwd())
-
-                    disp_vector = shift + np.array([0, 0, disp])
-                    struct3 = self.image_layer(struct2, disp_vector)
-
-                    self.context.write_struct(struct3, Path("input"))
+    def build_case_input(self, case_parameter):
+        shift, displacement = case_parameter
+        disp_vector = shift + np.array([0, 0, displacement])
+        return self.image_layer(self.context.struct, disp_vector)
 
 
 class FitOptimizedStructureOperation:
