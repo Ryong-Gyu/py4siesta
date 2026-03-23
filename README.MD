@@ -28,8 +28,8 @@ python py4siesta.py
 
 **1) Kpoint Sampling - Bulk**: Generate bulk calculation cases with isotropic `k x k x k` Monkhorst-Pack meshes.
 **2) Kpoint Sampling - Slab**: Generate slab calculation cases with in-plane `k x k x 1` meshes for surface models.
-**3) Structure Optimization - Bulk**: Create volume-scaled bulk structures for equation-of-state calculations.
-**4) Structure Optimization - Slab**: Create slab structures with only the in-plane lattice vectors scaled.
+**3) Structure Optimization - Bulk**: Create bulk EOS structures while choosing which lattice directions (`x y z`) are scaled.
+**4) Structure Optimization - Slab**: Create slab EOS structures with in-plane scaling and an optional z-direction scale for layered materials.
 **5) Structure Optimization - Sliding**: Build cases by translating selected atoms laterally to scan stacking or interface registry.
 **6) Structure Optimization - Distance**: Build cases by changing the vertical distance between selected atoms and the remaining structure.
 **7) Fitting**: Analyze completed EOS or distance calculations and generate an optimized structure from the fitted energy curve.
