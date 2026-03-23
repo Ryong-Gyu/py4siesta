@@ -52,6 +52,32 @@ def _prompt_choice(message: str, valid_choices) -> str:
         print(f"Please choose one of: {', '.join(sorted(valid))}")
 
 
+def _prompt_direction_mask(message: str, default):
+    default_mask = np.asarray(default, dtype=int).tolist()
+    prompt = f"{message} [default: {' '.join(map(str, default_mask))}]: "
+    while True:
+        raw = input(prompt).strip()
+        if not raw:
+            return default_mask
+
+        tokens = raw.replace(',', ' ').split()
+        if len(tokens) != 3:
+            print("Please enter exactly three values like '1 1 1' or '0 1 0'.")
+            continue
+
+        try:
+            mask = [int(token) for token in tokens]
+        except ValueError:
+            print("Direction components must be integers 0 or 1.")
+            continue
+
+        if any(value not in (0, 1) for value in mask):
+            print("Direction components must be either 0 or 1.")
+            continue
+
+        return mask
+
+
 def _parse_sliding_vector(line: str) -> np.ndarray:
     normalized = line.replace(',', ' ').split()
     if len(normalized) != 2:
@@ -148,10 +174,19 @@ def main():
         vasp.kpoint_sampling(sym=0, kpoints=kpt)
 
     elif mode == 3:
-        vasp.eos_bulk()
+        scale_mask = _prompt_direction_mask(
+            "Bulk expansion direction (x y z)",
+            default=[1, 1, 1],
+        )
+        vasp.eos_bulk(scale_mask=scale_mask)
 
     elif mode == 4:
-        vasp.eos_slab()
+        include_z = _prompt_choice(
+            "Include z-direction scaling for slab? (y/n): ",
+            {"y", "n"},
+        )
+        scale_mask = [1, 1, 1] if include_z == "y" else [1, 1, 0]
+        vasp.eos_slab(scale_mask=scale_mask)
 
     elif mode == 5:
         selection = _prompt_str(f"Type atom index range to move (between 1 ~ {len(vasp.struct):d}): ")

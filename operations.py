@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -30,16 +31,46 @@ class BaseOperation:
         return self.context.root / self.base_dirname
 
     @staticmethod
-    def _scaled_structure(struct, cell_transform, position_transform=None):
-        scaled_struct = struct.copy()
-        scaled_struct.set_cell(cell_transform(np.array(struct.get_cell(), copy=True)))
+    def _normalize_scale_mask(scale_mask, default):
+        if scale_mask is None:
+            scale_mask = default
 
-        if position_transform is not None:
-            scaled_positions = [position_transform(np.array(atom.get_position(), copy=True)) for atom in struct]
-            for atom, position in zip(scaled_struct._atoms, scaled_positions):
-                atom.set_position(Vector(position))
+        values = np.asarray(scale_mask, dtype=int).reshape(-1)
+        if values.size != 3:
+            raise ValueError("Scale direction must contain exactly three components.")
+        if not np.all(np.isin(values, [0, 1])):
+            raise ValueError("Scale direction components must be either 0 or 1.")
+        if not np.any(values):
+            raise ValueError("At least one scale direction must be enabled.")
+        return values.astype(float)
+
+    @classmethod
+    def _scale_case(cls, ratio, scale_mask, default_mask):
+        mask = cls._normalize_scale_mask(scale_mask, default_mask)
+        return {"ratio": float(ratio), "mask": mask}
+
+    @staticmethod
+    def _scaling_factors(ratio, mask):
+        mask_array = np.asarray(mask, dtype=float)
+        return 1.0 + (float(ratio) - 1.0) * mask_array
+
+    @classmethod
+    def _scaled_structure(cls, struct, ratio, scale_mask, default_mask):
+        mask = cls._normalize_scale_mask(scale_mask, default_mask)
+        factors = cls._scaling_factors(ratio, mask)
+        scaled_struct = struct.copy()
+
+        cell = np.array(struct.get_cell(), dtype=float, copy=True)
+        scaled_struct.set_cell(cell * factors[np.newaxis, :])
+
+        for atom, scaled_atom in zip(struct, scaled_struct._atoms):
+            position = np.array(atom.get_position(), dtype=float, copy=True)
+            scaled_atom.set_position(Vector(position * factors))
 
         return scaled_struct
+
+    def write_metadata(self, **kwargs):
+        return None
 
     @staticmethod
     def _print_structure_summary(struct):
@@ -126,6 +157,7 @@ class BaseOperation:
         self.prepare_base_dir()
 
         with working_dir(self.base_dir):
+            self.write_metadata(**kwargs)
             for index, case_parameter in self.iter_cases(self.case_parameters(**kwargs)):
                 with self.prepare_case_dir(self.case_name(index, case_parameter)):
                     self.copy_origin()
@@ -153,43 +185,57 @@ class KPointSamplingOperation(BaseOperation):
 
 class BulkEosOperation(BaseOperation):
     base_dirname = "02.volume_eos"
+    default_scale_mask = np.array([1.0, 1.0, 1.0])
 
-    def case_parameters(self, ratio_range=None):
+    def write_metadata(self, ratio_range=None, scale_mask=None):
+        metadata = {
+            "mode": "bulk",
+            "scale_mask": self._normalize_scale_mask(scale_mask, self.default_scale_mask).astype(int).tolist(),
+        }
+        Path("eos_config.json").write_text(json.dumps(metadata, indent=2) + "\n")
+
+    def case_parameters(self, ratio_range=None, scale_mask=None):
         if ratio_range is None:
             ratio_range = np.linspace(0.99, 1.01, 11)
-        return ratio_range
+        return [self._scale_case(ratio, scale_mask, self.default_scale_mask) for ratio in ratio_range]
 
     def case_name(self, index, case_parameter):
-        return f"{index:02d}-{case_parameter:4.3f}"
+        return f"{index:02d}-{case_parameter['ratio']:4.3f}"
 
     def build_case_input(self, case_parameter):
         return self._scaled_structure(
             self.context.struct,
-            cell_transform=lambda cell, ratio=case_parameter: ratio * cell,
-            position_transform=lambda position, ratio=case_parameter: ratio * position,
+            ratio=case_parameter["ratio"],
+            scale_mask=case_parameter["mask"],
+            default_mask=self.default_scale_mask,
         )
 
 
 class SlabEosOperation(BaseOperation):
     base_dirname = "02.slab_eos"
+    default_scale_mask = np.array([1.0, 1.0, 0.0])
 
-    def case_parameters(self, ratio_range=None):
+    def write_metadata(self, ratio_range=None, scale_mask=None):
+        metadata = {
+            "mode": "slab",
+            "scale_mask": self._normalize_scale_mask(scale_mask, self.default_scale_mask).astype(int).tolist(),
+        }
+        Path("eos_config.json").write_text(json.dumps(metadata, indent=2) + "\n")
+
+    def case_parameters(self, ratio_range=None, scale_mask=None):
         if ratio_range is None:
             ratio_range = np.linspace(0.98, 1.02, 11)
-        return ratio_range
+        return [self._scale_case(ratio, scale_mask, self.default_scale_mask) for ratio in ratio_range]
 
     def case_name(self, index, case_parameter):
-        return f"{index:02d}-{case_parameter:4.3f}"
+        return f"{index:02d}-{case_parameter['ratio']:4.3f}"
 
     def build_case_input(self, case_parameter):
         return self._scaled_structure(
             self.context.struct,
-            cell_transform=lambda cell, ratio=case_parameter: np.column_stack(
-                (ratio * cell[:, 0], ratio * cell[:, 1], cell[:, 2])
-            ),
-            position_transform=lambda position, ratio=case_parameter: np.array(
-                [ratio * position[0], ratio * position[1], position[2]]
-            ),
+            ratio=case_parameter["ratio"],
+            scale_mask=case_parameter["mask"],
+            default_mask=self.default_scale_mask,
         )
 
 
@@ -251,6 +297,15 @@ class FitOptimizedStructureOperation:
     def _distance_from_case_name(case_name):
         return float(case_name.split("distance_")[-1])
 
+    @staticmethod
+    def _load_scale_mask(base_dir, default_mask):
+        config_path = base_dir / "eos_config.json"
+        if not config_path.is_file():
+            return np.asarray(default_mask, dtype=float)
+
+        metadata = json.loads(config_path.read_text())
+        return BaseOperation._normalize_scale_mask(metadata.get("scale_mask"), default_mask)
+
     def run(self, mode="Murnaghan", selection=None):
         struct = self.context.struct.copy()
         atoms = struct._atoms
@@ -260,12 +315,16 @@ class FitOptimizedStructureOperation:
 
         if mode == "Murnaghan":
             base_dir = self.context.root / "02.volume_eos"
+            scale_mask = self._load_scale_mask(base_dir, BulkEosOperation.default_scale_mask)
         elif mode == "Polynomial":
             base_dir = self.context.root / "02.slab_eos"
+            scale_mask = self._load_scale_mask(base_dir, SlabEosOperation.default_scale_mask)
         elif mode == "Distance":
             base_dir = self.context.root / "02.distance"
+            scale_mask = None
         else:
             base_dir = self.context.root
+            scale_mask = None
 
         if not base_dir.exists():
             raise FileNotFoundError(f"{base_dir} does not exist")
@@ -344,13 +403,14 @@ class FitOptimizedStructureOperation:
             opt_volume = opt_coeff[3]
             opt_func = murnaghan(opt_coeff, vfit)
 
-            ratio = (opt_volume / init_volume) ** (1 / 3)
+            active_directions = int(np.count_nonzero(scale_mask))
+            ratio = (opt_volume / init_volume) ** (1 / active_directions)
+            factors = BaseOperation._scaling_factors(ratio, scale_mask)
 
             for iatom in range(len(atoms)):
-                pos = ratio * atoms[iatom]._position
+                pos = factors * atoms[iatom]._position
                 struct._atoms[iatom].set_position(Vector(pos))
-            vector = ratio * cell
-            struct._cell = vector
+            struct._cell = cell * factors[np.newaxis, :]
             plt.plot(volume, energy, "ro")
 
         elif mode == "Polynomial":
@@ -359,13 +419,12 @@ class FitOptimizedStructureOperation:
             opt_func = polynomial(coeff_poly_4nd, vfit)
 
             ratio = opt_lattice / init_lattice
+            factors = BaseOperation._scaling_factors(ratio, scale_mask)
 
             for iatom in range(len(atoms)):
-                pos = ratio * atoms[iatom]._position
+                pos = factors * atoms[iatom]._position
                 struct._atoms[iatom].set_position(Vector(pos))
-            vector = cell.copy()
-            vector[:, 0:2] = ratio * cell[:, 0:2]
-            struct._cell = vector
+            struct._cell = cell * factors[np.newaxis, :]
             plt.plot(lattice, energy, "ro")
 
         elif mode == "Distance":
@@ -456,11 +515,11 @@ class siesta_eos:
     def kpoint_sampling(self, sym=1, kpoints=None):
         return self._kpoint_sampling.run(sym=sym, kpoints=kpoints)
 
-    def eos_bulk(self, ratio_range=None):
-        return self._bulk_eos.run(ratio_range=ratio_range)
+    def eos_bulk(self, ratio_range=None, scale_mask=None):
+        return self._bulk_eos.run(ratio_range=ratio_range, scale_mask=scale_mask)
 
-    def eos_slab(self, ratio_range=None):
-        return self._slab_eos.run(ratio_range=ratio_range)
+    def eos_slab(self, ratio_range=None, scale_mask=None):
+        return self._slab_eos.run(ratio_range=ratio_range, scale_mask=scale_mask)
 
     def eos_sliding(self, selection, sliding_cases):
         return self._sliding.run(selection=selection, sliding_cases=sliding_cases)
