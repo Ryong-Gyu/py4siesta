@@ -57,6 +57,7 @@ def main():
 
     if mode in {3, 4, 5, 6, 7}:
         _print_origin_structure(vasp.struct)
+        print("\n")
 
     if mode == 1:
         kpt = []
@@ -99,9 +100,10 @@ def main():
         )
 
     elif mode == 6:
-        selection = _prompt_str("Moving atom index range (e.g. 21-30 (from 21 to 30 atoms)): ")
         min_distance = vasp.get_distance_min(selection)
-        print(f"Current minimum z distance: {min_distance:.6f}")
+        print(f"Current minimum z distance (in Ang): {min_distance:.6f}\n")
+
+        selection = _prompt_str("Moving atom index range (e.g. 21-30 (from 21 to 30 atoms)): ")
         distance_start = _prompt_float("Distance start: ")
         distance_end = _prompt_float("Distance end: ")
         distance_npt = _prompt_int("Distance npt: ")
