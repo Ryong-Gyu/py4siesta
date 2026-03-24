@@ -44,7 +44,7 @@ The repository also includes the private/bundled `NanoCore` module used by the C
 
 ### About `NanoCore`
 
-`NanoCore` is imported locally from this repository.
+This project is based on `NanoCore` which is old version of on-going project [`OORINano`](https://github.com/yhkimlab/OORINano). `NanoCore` is imported locally from this repository.
 
 That means:
 
