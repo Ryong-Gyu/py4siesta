@@ -14,7 +14,7 @@ This project is based on the bundled `NanoCore` code included in this repository
 ### Clone the repository
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/YHKlab-RGLee/py4siesta.git
 cd py4siesta
 ```
 
