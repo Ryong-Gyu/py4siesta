@@ -26,6 +26,7 @@ MENU = """ ======================= K-point Sampling ========================
  8) K-point Sampling    9) Structure Optimization
  ============================ Utility ============================
 10) Move structure
+11) Interpolate structure
 
  0) Quit
 """
@@ -286,6 +287,19 @@ def main():
 
         struct2 = vasp.move(struct, displacement=np.array([dx, dy, dz]))
         s2.Siesta(struct2).write_struct()
+
+    elif mode == 11:
+        _show_section("Interpolate structure")
+        initial_path = _prompt_str("Input initial structure path (STRUCT.fdf): ")
+        final_path = _prompt_str("Input final structure path (STRUCT.fdf): ")
+        division_npt = _prompt_int("Input division npt (>=2): ")
+        extrapolate_npt = _prompt_int("Input extrapolate npt (0 for none): ")
+        vasp.interpolate(
+            initial_path=initial_path,
+            final_path=final_path,
+            division_npt=division_npt,
+            extrapolate_npt=extrapolate_npt,
+        )
 
     elif mode == 0:
         print("Exit py4siesta.")
