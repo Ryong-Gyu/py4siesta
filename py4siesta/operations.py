@@ -497,6 +497,85 @@ class MoveStructureOperation:
         return struct2
 
 
+class InterpolateStructureOperation(BaseOperation):
+    base_dirname = "11.interpolate_structure"
+
+    @staticmethod
+    def _read_structure(path):
+        struct_path = Path(path).expanduser()
+        if not struct_path.is_file():
+            raise FileNotFoundError(f"Structure file does not exist: {struct_path}")
+        return s2.read_fdf(struct_path)
+
+    @staticmethod
+    def _validate_pair(initial_struct, final_struct):
+        if len(initial_struct) != len(final_struct):
+            raise ValueError("Initial and final structures must have the same number of atoms.")
+
+        for initial_atom, final_atom in zip(initial_struct, final_struct):
+            if initial_atom.get_symbol() != final_atom.get_symbol():
+                raise ValueError("Initial and final structures must have matching atom ordering and symbols.")
+
+    @classmethod
+    def _interpolate_structure(cls, initial_struct, final_struct, ratio):
+        cls._validate_pair(initial_struct, final_struct)
+        ratio = float(ratio)
+
+        interpolated_struct = initial_struct.copy()
+
+        initial_cell = np.array(initial_struct.get_cell(), dtype=float, copy=True)
+        final_cell = np.array(final_struct.get_cell(), dtype=float, copy=True)
+        interpolated_struct.set_cell(initial_cell + ratio * (final_cell - initial_cell))
+
+        for initial_atom, final_atom, interpolated_atom in zip(initial_struct, final_struct, interpolated_struct._atoms):
+            initial_position = np.array(initial_atom.get_position(), dtype=float, copy=True)
+            final_position = np.array(final_atom.get_position(), dtype=float, copy=True)
+            interpolated_position = initial_position + ratio * (final_position - initial_position)
+            interpolated_atom.set_position(Vector(interpolated_position))
+
+        return interpolated_struct
+
+    @staticmethod
+    def _ratios(division_npt, extrapolate_npt):
+        if division_npt < 2:
+            raise ValueError("division_npt must be at least 2.")
+        if extrapolate_npt < 0:
+            raise ValueError("extrapolate_npt must be 0 or a positive integer.")
+
+        division_ratios = np.linspace(0.0, 1.0, int(division_npt)).tolist()
+        if extrapolate_npt == 0:
+            return division_ratios
+
+        step = division_ratios[1] - division_ratios[0]
+        extrapolated = [1.0 + step * index for index in range(1, int(extrapolate_npt) + 1)]
+        return division_ratios + extrapolated
+
+    def write_metadata(self, initial_path, final_path, division_npt, extrapolate_npt=0):
+        metadata = {
+            "mode": "interpolate",
+            "initial_structure": str(Path(initial_path).expanduser()),
+            "final_structure": str(Path(final_path).expanduser()),
+            "division_npt": int(division_npt),
+            "extrapolate_npt": int(extrapolate_npt),
+        }
+        Path("interpolate_config.json").write_text(json.dumps(metadata, indent=2) + "\n")
+
+    def case_parameters(self, initial_path, final_path, division_npt, extrapolate_npt=0):
+        initial_struct = self._read_structure(initial_path)
+        final_struct = self._read_structure(final_path)
+        self._validate_pair(initial_struct, final_struct)
+        ratios = self._ratios(int(division_npt), int(extrapolate_npt))
+        return [(ratio, initial_struct, final_struct) for ratio in ratios]
+
+    def case_name(self, index, case_parameter):
+        ratio, _, _ = case_parameter
+        return f"{index:02d}-ratio_{ratio:0.4f}"
+
+    def build_case_input(self, case_parameter):
+        ratio, initial_struct, final_struct = case_parameter
+        return self._interpolate_structure(initial_struct, final_struct, ratio)
+
+
 class siesta_eos:
     def __init__(self):
         self.context = SiestaContext()
@@ -511,6 +590,7 @@ class siesta_eos:
         self._fit_optimized_structure = FitOptimizedStructureOperation(self.context)
         self._job_submission = JobSubmissionOperation(self.context)
         self._move_structure = MoveStructureOperation(self.context)
+        self._interpolate_structure = InterpolateStructureOperation(self.context)
 
     def kpoint_sampling(self, sym=1, kpoints=None):
         return self._kpoint_sampling.run(sym=sym, kpoints=kpoints)
@@ -538,3 +618,11 @@ class siesta_eos:
 
     def move(self, struct, displacement=np.array([0, 0, 0])):
         return self._move_structure.run(struct, displacement=displacement)
+
+    def interpolate(self, initial_path, final_path, division_npt, extrapolate_npt=0):
+        return self._interpolate_structure.run(
+            initial_path=initial_path,
+            final_path=final_path,
+            division_npt=division_npt,
+            extrapolate_npt=extrapolate_npt,
+        )
