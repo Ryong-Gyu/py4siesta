@@ -512,7 +512,7 @@ class InterpolateStructureOperation(BaseOperation):
         if len(initial_struct) != len(final_struct):
             raise ValueError("Initial and final structures must have the same number of atoms.")
 
-        for initial_atom, final_atom in zip(initial_struct, final_struct):
+        for initial_atom, final_atom in zip(initial_struct._atoms, final_struct._atoms):
             if initial_atom.get_symbol() != final_atom.get_symbol():
                 raise ValueError("Initial and final structures must have matching atom ordering and symbols.")
 
@@ -527,7 +527,7 @@ class InterpolateStructureOperation(BaseOperation):
         final_cell = np.array(final_struct.get_cell(), dtype=float, copy=True)
         interpolated_struct.set_cell(initial_cell + ratio * (final_cell - initial_cell))
 
-        for initial_atom, final_atom, interpolated_atom in zip(initial_struct, final_struct, interpolated_struct._atoms):
+        for initial_atom, final_atom, interpolated_atom in zip(initial_struct._atoms, final_struct._atoms, interpolated_struct._atoms):
             initial_position = np.array(initial_atom.get_position(), dtype=float, copy=True)
             final_position = np.array(final_atom.get_position(), dtype=float, copy=True)
             interpolated_position = initial_position + ratio * (final_position - initial_position)
