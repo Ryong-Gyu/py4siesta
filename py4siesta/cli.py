@@ -25,8 +25,14 @@ MENU = """ ======================= K-point Sampling ========================
  ======================= Job Submission ==========================
  9) K-point Sampling   10) Structure Optimization
  ============================ Utility ============================
-11) Move structure
-12) Interpolate structure
+ 01) Generate Geometries
+
+ 0) Quit
+"""
+
+GENERATE_GEOMETRIES_MENU = """ ======================= Generate Geometries ======================
+ 1) Move structure
+ 2) Interpolate structure
 
  0) Quit
 """
@@ -66,6 +72,14 @@ def _prompt_int(message: str) -> int:
 
 
 def _prompt_str(message: str) -> str:
+    while True:
+        value = input(message).strip()
+        if value:
+            return value
+        print("Input cannot be empty.")
+
+
+def _prompt_menu_token(message: str) -> str:
     while True:
         value = input(message).strip()
         if value:
@@ -200,10 +214,51 @@ def _print_origin_structure(struct) -> None:
     struct.__repr__()
 
 
+def _run_generate_geometries_menu(vasp) -> None:
+    print(GENERATE_GEOMETRIES_MENU)
+    mode = _prompt_int("Select Generate Geometries menu number: ")
+
+    if mode == 1:
+        _show_section("Move structure")
+        struct = vasp.struct
+        dx = _prompt_float("Input displacement dx: ")
+        dy = _prompt_float("Input displacement dy: ")
+        dz = _prompt_float("Input displacement dz: ")
+
+        struct2 = vasp.move(struct, displacement=np.array([dx, dy, dz]))
+        s2.Siesta(struct2).write_struct()
+
+    elif mode == 2:
+        _show_section("Interpolate structure")
+        initial_path = _prompt_str("Input initial structure path (STRUCT.fdf): ")
+        final_path = _prompt_str("Input final structure path (STRUCT.fdf): ")
+        division_npt = _prompt_int("Input division npt (>=2): ")
+        extrapolate_npt = _prompt_int("Input extrapolate npt (0 for none): ")
+        vasp.interpolate(
+            initial_path=initial_path,
+            final_path=final_path,
+            division_npt=division_npt,
+            extrapolate_npt=extrapolate_npt,
+        )
+
+    elif mode == 0:
+        print("Exit Generate Geometries.")
+
+    else:
+        print("Unknown Generate Geometries menu number. Please run the program again and choose a valid option.")
+
+
 def main():
     print(BANNER)
     print(MENU)
-    mode = _prompt_int("Select menu number: ")
+    mode_token = _prompt_menu_token("Select menu number: ")
+    if mode_token == "01":
+        mode = "01"
+    else:
+        try:
+            mode = int(mode_token)
+        except ValueError:
+            mode = None
 
     vasp = siesta_eos()
 
@@ -294,28 +349,8 @@ def main():
     elif mode == 10:
         vasp.qsub("opt")
 
-    elif mode == 11:
-        _show_section("Move structure")
-        struct = vasp.struct
-        dx = _prompt_float("Input displacement dx: ")
-        dy = _prompt_float("Input displacement dy: ")
-        dz = _prompt_float("Input displacement dz: ")
-
-        struct2 = vasp.move(struct, displacement=np.array([dx, dy, dz]))
-        s2.Siesta(struct2).write_struct()
-
-    elif mode == 12:
-        _show_section("Interpolate structure")
-        initial_path = _prompt_str("Input initial structure path (STRUCT.fdf): ")
-        final_path = _prompt_str("Input final structure path (STRUCT.fdf): ")
-        division_npt = _prompt_int("Input division npt (>=2): ")
-        extrapolate_npt = _prompt_int("Input extrapolate npt (0 for none): ")
-        vasp.interpolate(
-            initial_path=initial_path,
-            final_path=final_path,
-            division_npt=division_npt,
-            extrapolate_npt=extrapolate_npt,
-        )
+    elif mode == "01":
+        _run_generate_geometries_menu(vasp)
 
     elif mode == 0:
         print("Exit py4siesta.")

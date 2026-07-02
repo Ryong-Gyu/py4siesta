@@ -109,17 +109,18 @@ The tool copies this reference input and creates calculation case directories fr
 - **Menu 8 - Analysis**
    Analyze completed EOS or distance calculations and generate an optimized structure from the fitted energy curve.
 
-
 ### 3. Job Submission
 - **Menu 9 - K-point Sampling**
    Submit generated k-point sampling jobs.
 - **Menu 10 - Structure Optimization**
    Submit generated structure-optimization jobs.
 
-### 4. Extra Functionality
-- **Menu 11 - Move structure**
+### 4. Extra
+- **Menu 01 - Generate Geometries**
+   Open the geometry-generation submenu.
+- **Submenu 1 - Move structure**
    Translate the entire structure by a user-defined displacement vector and write a new `STRUCT.fdf`.
-- **Menu 12 - Interpolate structure**
+- **Submenu 2 - Interpolate structure**
    Generate interpolated structures between two `STRUCT.fdf` files, with optional extrapolated points.
 
 ## Quick usage summary
