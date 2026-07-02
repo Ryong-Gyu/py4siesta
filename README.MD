@@ -1,42 +1,70 @@
 # py4siesta
 
-`py4siesta` is a CLI utility for preparing and organizing SIESTA calculation cases.
+`py4siesta` is a numbered-menu command-line tool for preparing, organizing, submitting, and post-processing SIESTA calculation cases.
 
-## Important notice
+It is designed around one workflow:
 
-This project is based on the bundled `NanoCore` code (developed by Dr. Hu Sung Kim, KISTI) included in this repository and related original work from **OORINano / YHKLab**.
+1. Prepare a reference SIESTA input in an `origin/` directory.
+2. Start the CLI.
+3. Choose a numbered menu option.
+4. Let `py4siesta` generate or analyze the calculation cases.
 
-- Do **not** remove the original attribution/copyright context for `NanoCore` and OORINano.
-- This repository uses the local bundled `NanoCore` package; it does **not** require downloading `NanoCore` from an external source.
+## Important Notice
 
-## Installation
+This project includes the bundled `NanoCore` code developed by Dr. Hu Sung Kim, KISTI, and related original work from **OORINano / YHKLab**.
 
-### Clone the repository
+- Keep the original attribution and copyright context for `NanoCore` and OORINano.
+- The local bundled `NanoCore/` package is used directly from this repository.
+- You do not need to download `NanoCore` from an external source.
+
+## Quick Start
+
+Clone and enter the repository:
 
 ```bash
 git clone https://github.com/YHKlab-RGLee/py4siesta.git
 cd py4siesta
 ```
 
-### Install
-
-Standard install:
+Install the package:
 
 ```bash
 pip install .
 ```
 
-Editable install:
+For development, use editable install instead:
 
 ```bash
 pip install -e .
 ```
 
-### Configure local SIESTA executables
+Run the CLI:
 
-The bundled `NanoCore` module reads executable locations from `NanoCore/env.py`. Before running post-process features that call SIESTA utilities, revise this file manually for your local environment.
+```bash
+py4siesta
+```
 
-Update values such as:
+Or run it directly from the repository root:
+
+```bash
+python -m py4siesta
+```
+
+## Requirements
+
+Runtime Python dependencies are declared in `pyproject.toml`:
+
+- `numpy`
+- `scipy`
+- `matplotlib`
+
+The repository also installs the bundled `NanoCore` package.
+
+## Configure SIESTA Paths
+
+The bundled `NanoCore` module reads local executable paths from `NanoCore/env.py`. Update this file before using features that call SIESTA utilities.
+
+Common values to edit:
 
 ```python
 siesta_calculator = "/path/to/siesta"
@@ -50,46 +78,13 @@ siesta_util_vh = "macroave"
 siesta_util_pldos = "/path/to/PyProjection.py"
 ```
 
-For PDOS extraction, make sure `siesta_util_location` points to the directory containing the `fmpdos` executable, or set `siesta_util_pdos` to the full executable path.
+For PDOS extraction, make sure `siesta_util_location` points to the directory containing `fmpdos`, or set `siesta_util_pdos` to the full executable path.
 
-## Dependencies
+## Working Directory Setup
 
-The package declares these runtime dependencies:
+Before running case-generation menus, create an `origin/` directory in your working directory.
 
-- `numpy`
-- `scipy`
-- `matplotlib`
-
-The repository also includes the private/bundled `NanoCore` module used by the CLI.
-
-> ### About `NanoCore`
-> This project is based on `NanoCore` which is old version of on-going project [`OORINano`](https://github.com/yhkimlab/OORINano). `NanoCore` is imported locally from this repository.
->  
-> That means:
->  
-> - `python -m py4siesta` works from this repository because the bundled `NanoCore/` package is present locally
-> - `pip install .` or `pip install -e .` from this repository installs both `py4siesta` and the bundled `NanoCore` package defined in `pyproject.toml`
-> - there is no need to fetch `NanoCore` from an external site or package index
-
-## Running the program
-
-Run from the repository root as a module:
-
-```bash
-python -m py4siesta
-```
-
-Or, after installation, run the console command:
-
-```bash
-py4siesta
-```
-
-## Required working directory layout
-
-Before running the program, create an `origin` directory in your working directory.
-
-Example:
+Expected layout:
 
 ```text
 origin/
@@ -98,74 +93,95 @@ origin/
 └── slm_siesta_run
 ```
 
-Required files:
+Required inputs:
 
-- `origin/input/STRUCT.fdf`
-- one or more job scripts in `origin` matching `slm_*`
+| Path | Purpose |
+| --- | --- |
+| `origin/input/STRUCT.fdf` | Reference SIESTA structure/input file copied into generated cases. |
+| `origin/slm_*` | One or more job scripts copied into generated cases. |
 
-The tool copies this reference input and creates calculation case directories from it.
+## Menu Reference
 
-## Features
-
-
-### 1. K-point Sampling
-- **Menu 1 - Bulk**
-  Generate bulk calculation cases using isotropic `k x k x k` Monkhorst-Pack meshes.
-- **Menu 2 - Slab**
-  Generate slab calculation cases using in-plane `k x k x 1` meshes.
-- **Menu 3 - Analysis**
-  Perform k-point convergence test from the completed k-point sampling calculations.
-
-### 2. Structure Optimization
-- **Menu 4 - Bulk**
-   Create bulk EOS structures while choosing which lattice directions (`x y z`) are scaled.
-- **Menu 5 - Slab**
-   Create slab EOS structures with in-plane-focused scaling.
-- **Menu 6 - Sliding**
-   Build cases by translating selected atoms laterally to scan stacking or interface registry.
-- **Menu 7 - Distance**
-   Build cases by changing the vertical distance between selected atoms and the remaining structure.
-- **Menu 8 - Analysis**
-   Analyze completed EOS or distance calculations and generate an optimized structure from the fitted energy curve.
-
-### 3. Job Submission
-- **Menu 9 - K-point Sampling**
-   Submit generated k-point sampling jobs.
-- **Menu 10 - Structure Optimization**
-   Submit generated structure-optimization jobs.
-
-### 4. Post-Process
-- **Menu 11 - Plot Band Structure**
-   Plot a SIESTA `.bands` file from the current directory or a user-provided path. If a local `.bands` file exists, it is selected automatically. The command asks for the energy window and generates `band.png`.  
-- **Menu 12 - Generate PDOS CSV**
-   Extract total and selected-orbital PDOS data from a SIESTA `.PDOS` file in the current directory. The command asks for the energy window relative to `E_v` with defaults `-4` and `12`, then repeats the native `fmpdos` atom/orbital inputs for each selection: atom number/species label (`0` for all atoms), `n` (`0` for all), `l` (`-1` for all), and `m` (`9` for all). Input and intermediate output file names are selected automatically. Matching `<label>.EIG` and `<label>.DOS` files are required; matching `<label>.bands` is used for `E_v` when present, otherwise `E_v` is estimated from `<label>.EIG`. Existing same-named `fmpdos` output files are removed before regeneration, spin columns are written only when present, and the combined data and plot are written to `PDOS.csv` and `pdos.png`.
-- **Menu 13 - Plot PLDOS**
-   Plot a SIESTA `.PDOS` file from the current directory or a user-provided path. If a local `.PDOS` file exists, it is selected automatically. The command uses matching `<label>.xyz` and `<label>.EIG` files and generates `pldos.png`.
-
-### 5. Extra
-- **Menu 01 - Generate Geometries**
-   Open the geometry-generation submenu.
-  - **Submenu 1 - Move structure**
-     Translate the entire structure by a user-defined displacement vector and write a new `STRUCT.fdf`.
-  - **Submenu 2 - Interpolate structure**
-     Generate interpolated structures between two `STRUCT.fdf` files, with optional extrapolated points.
-
-## Quick usage summary
-
-Development usage:
-
-```bash
-python -m py4siesta
-```
-
-Installed usage:  
+Start the program, then select a menu number:
 
 ```bash
 py4siesta
 ```
 
-Direct usage:  
+### K-point Sampling
+
+| Menu | Feature | Purpose |
+| --- | --- | --- |
+| `1` | Bulk | Generate bulk cases using isotropic `k x k x k` Monkhorst-Pack meshes. |
+| `2` | Slab | Generate slab cases using in-plane `k x k x 1` meshes. |
+| `3` | Analysis | Run k-point convergence analysis from completed k-point calculations. |
+
+### Structure Optimization
+
+| Menu | Feature | Purpose |
+| --- | --- | --- |
+| `4` | Bulk | Create bulk equation-of-state structures and choose scaled directions (`x y z`). |
+| `5` | Slab | Create slab equation-of-state structures with in-plane-focused scaling. |
+| `6` | Sliding | Translate selected atoms laterally to scan stacking or interface registry. |
+| `7` | Distance | Change the vertical distance between selected atoms and the remaining structure. |
+| `8` | Analysis | Analyze completed EOS or distance calculations and generate an optimized structure. |
+
+### Job Submission
+
+| Menu | Feature | Purpose |
+| --- | --- | --- |
+| `9` | K-point Sampling | Submit generated k-point sampling jobs. |
+| `10` | Structure Optimization | Submit generated structure-optimization jobs. |
+
+### Post-Process
+
+| Menu | Feature | Inputs | Outputs |
+| --- | --- | --- | --- |
+| `11` | Plot Band Structure | A `.bands` file and energy window. | `band.png`, plus band-path helper files. |
+| `12` | Generate PDOS CSV | SIESTA `.PDOS`, matching `.EIG` and `.DOS`, energy window, and `fmpdos` atom/orbital selections. | `PDOS.csv` and `pdos.png`. |
+| `13` | Plot PLDOS | A `.PDOS` file, matching `.xyz` and `.EIG`, and energy window. | `pldos.png`, plus PLDOS helper files. |
+
+Notes:
+
+- Menu `11` automatically selects a local `.bands` file when one is present.
+- Menu `12` uses a matching `<label>.bands` file for `E_v` when available; otherwise it estimates `E_v` from `<label>.EIG`.
+- Menu `12` removes existing same-named `fmpdos` output files before regenerating PDOS data.
+- Menu `13` automatically selects a local `.PDOS` file when one is present.
+
+### Utility
+
+| Menu | Feature | Purpose |
+| --- | --- | --- |
+| `01` | Generate Geometries | Open the geometry-generation submenu. |
+
+Geometry-generation submenu:
+
+| Submenu | Feature | Purpose |
+| --- | --- | --- |
+| `1` | Move structure | Translate the full structure by a user-defined displacement vector and write a new `STRUCT.fdf`. |
+| `2` | Interpolate structure | Generate interpolated structures between two `STRUCT.fdf` files, with optional extrapolated points. |
+
+## Running Modes
+
+Use one of these commands depending on how you installed or checked out the project:
 
 ```bash
+# From an installed package
+py4siesta
+
+# From the repository root
+python -m py4siesta
+
+# Direct script usage
 python {py4siesta_path}/run.py
 ```
+
+## Bundled NanoCore
+
+This project is based on `NanoCore`, an older version of the ongoing [`OORINano`](https://github.com/yhkimlab/OORINano) project. `NanoCore` is imported locally from this repository.
+
+That means:
+
+- `python -m py4siesta` works from this repository because `NanoCore/` is present locally.
+- `pip install .` or `pip install -e .` installs both `py4siesta` and the bundled `NanoCore` package defined in `pyproject.toml`.
+- There is no need to fetch `NanoCore` from an external site or package index.
