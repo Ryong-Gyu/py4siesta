@@ -90,30 +90,30 @@ The tool copies this reference input and creates calculation case directories fr
 
 
 ### 1. K-point Sampling
-- **Menu 1 - K-point Sampling - Bulk**
+- **Menu 1 - Bulk**
   Generate bulk calculation cases using isotropic `k x k x k` Monkhorst-Pack meshes.
-- **Menu 2 - K-point Sampling - Slab**
+- **Menu 2 - Slab**
   Generate slab calculation cases using in-plane `k x k x 1` meshes.
-- **Menu 3 - K-point Analysis**
-  Extract total energies from completed menu 1 or 2 k-point sampling results in `01.kpoint_sampling`, plot `E` vs `k`, shade the converged region, and save `kpoint_convergence.png` plus `kpoint_convergence.dat`. The default total-energy tolerance is `0.01 eV`.
+- **Menu 3 - Analysis**
+  Perform k-point convergence test from the completed k-point sampling calculations.
 
 ### 2. Structure Optimization
-- **Menu 4 - Structure Optimization - Bulk**
+- **Menu 4 - Bulk**
    Create bulk EOS structures while choosing which lattice directions (`x y z`) are scaled.
-- **Menu 5 - Structure Optimization - Slab**
+- **Menu 5 - Slab**
    Create slab EOS structures with in-plane-focused scaling.
-- **Menu 6 - Structure Optimization - Sliding**
+- **Menu 6 - Sliding**
    Build cases by translating selected atoms laterally to scan stacking or interface registry.
-- **Menu 7 - Structure Optimization - Distance**
+- **Menu 7 - Distance**
    Build cases by changing the vertical distance between selected atoms and the remaining structure.
-- **Menu 8 - EOS Analysis**
+- **Menu 8 - Analysis**
    Analyze completed EOS or distance calculations and generate an optimized structure from the fitted energy curve.
 
 
 ### 3. Job Submission
-- **Menu 9 - Job Submission - K-point Sampling**
+- **Menu 9 - K-point Sampling**
    Submit generated k-point sampling jobs.
-- **Menu 10 - Job Submission - Structure Optimization**
+- **Menu 10 - Structure Optimization**
    Submit generated structure-optimization jobs.
 
 ### 4. Extra Functionality
