@@ -19,14 +19,14 @@ BANNER = """            \\\///
 """
 
 MENU = """ ======================= K-point Sampling ========================
- 1) Bulk    2) Slab
+ 1) Bulk    2) Slab    3) Analysis
  =================== Structure Optimization ======================
- 3) Bulk    4) Slab    5) Sliding    6) Distance    7) Fitting
+ 4) Bulk    5) Slab    6) Sliding    7) Distance    8) Analysis
  ======================= Job Submission ==========================
- 8) K-point Sampling    9) Structure Optimization
+ 9) K-point Sampling   10) Structure Optimization
  ============================ Utility ============================
-10) Move structure
-11) Interpolate structure
+11) Move structure
+12) Interpolate structure
 
  0) Quit
 """
@@ -39,6 +39,17 @@ def _show_section(title: str) -> None:
 def _prompt_float(message: str) -> float:
     while True:
         raw = input(message).strip()
+        try:
+            return float(raw)
+        except ValueError:
+            print("Please enter a valid number.")
+
+
+def _prompt_optional_float(message: str, default: float) -> float:
+    while True:
+        raw = input(f"{message} [default: {default}]: ").strip()
+        if not raw:
+            return default
         try:
             return float(raw)
         except ValueError:
@@ -196,7 +207,7 @@ def main():
 
     vasp = siesta_eos()
 
-    if mode in {3, 4, 5, 6, 7}:
+    if mode in {4, 5, 6, 7, 8}:
         _print_origin_structure(vasp.struct)
         print("\n")
 
@@ -212,6 +223,11 @@ def main():
         vasp.kpoint_sampling(sym=0, kpoints=kpt)
 
     elif mode == 3:
+        _show_section("K-point convergence analysis")
+        tolerance = _prompt_optional_float("Input total energy tolerance in eV", default=0.01)
+        vasp.kpoint_analysis(tolerance=tolerance)
+
+    elif mode == 4:
         _show_section("Bulk structure optimization")
         scale_mask = _prompt_direction_mask(
             "Input bulk expansion direction (x y z)",
@@ -219,7 +235,7 @@ def main():
         )
         vasp.eos_bulk(scale_mask=scale_mask)
 
-    elif mode == 4:
+    elif mode == 5:
         _show_section("Slab structure optimization")
         include_z = _prompt_choice(
             "Include z-direction scaling? (y/n): ",
@@ -228,7 +244,7 @@ def main():
         scale_mask = [1, 1, 1] if include_z == "y" else [1, 1, 0]
         vasp.eos_slab(scale_mask=scale_mask)
 
-    elif mode == 5:
+    elif mode == 6:
         _show_section("Sliding structure optimization")
         selection = _prompt_atom_selection(len(vasp.struct))
         sliding_mode = _prompt_choice(
@@ -244,7 +260,7 @@ def main():
             sliding_cases=sliding_cases,
         )
 
-    elif mode == 6:
+    elif mode == 7:
         _show_section("Distance structure optimization")
         selection = _prompt_atom_selection(len(vasp.struct))
         min_distance = vasp.get_distance_min(selection)
@@ -258,7 +274,7 @@ def main():
             distance_range=np.linspace(distance_start, distance_end, distance_npt),
         )
 
-    elif mode == 7:
+    elif mode == 8:
         _show_section("Structure fitting")
         print("1) Bulk")
         print("2) Slab")
@@ -272,13 +288,13 @@ def main():
             selection = _prompt_atom_selection(len(vasp.struct), label="moving atom index range")
             vasp.find_optimized_lattice(mode="Distance", selection=selection)
 
-    elif mode == 8:
+    elif mode == 9:
         vasp.qsub("kpt")
 
-    elif mode == 9:
+    elif mode == 10:
         vasp.qsub("opt")
 
-    elif mode == 10:
+    elif mode == 11:
         _show_section("Move structure")
         struct = vasp.struct
         dx = _prompt_float("Input displacement dx: ")
@@ -288,7 +304,7 @@ def main():
         struct2 = vasp.move(struct, displacement=np.array([dx, dy, dz]))
         s2.Siesta(struct2).write_struct()
 
-    elif mode == 11:
+    elif mode == 12:
         _show_section("Interpolate structure")
         initial_path = _prompt_str("Input initial structure path (STRUCT.fdf): ")
         final_path = _prompt_str("Input final structure path (STRUCT.fdf): ")

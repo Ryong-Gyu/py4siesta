@@ -183,6 +183,103 @@ class KPointSamplingOperation(BaseOperation):
         return case_parameter
 
 
+class KPointAnalysisOperation:
+    base_dirname = "01.kpoint_sampling"
+
+    def __init__(self, context: SiestaContext):
+        self.context = context
+
+    @staticmethod
+    def _k_value_from_case_name(case_name):
+        tokens = case_name.split("+")
+        if not tokens:
+            raise ValueError(f"Cannot read k-point value from case name: {case_name}")
+        return int(tokens[0])
+
+    @staticmethod
+    def _converged_index(energy, tolerance):
+        if len(energy) < 2:
+            return None
+
+        differences = np.abs(np.diff(energy))
+        for index in range(len(differences)):
+            if np.all(differences[index:] <= tolerance):
+                return index + 1
+        return None
+
+    def _collect_results(self, base_dir):
+        results = []
+        for path in sorted(base_dir.iterdir()):
+            if not path.is_dir():
+                continue
+
+            stdout_path = path / "OUT" / "stdout.txt"
+            energy_line = last_matching_line(stdout_path, "siesta:         Total =")
+            if not energy_line:
+                continue
+
+            results.append(
+                (
+                    self._k_value_from_case_name(path.name),
+                    float(energy_line.split()[-1]),
+                    path.name,
+                )
+            )
+
+        return sorted(results, key=lambda item: item[0])
+
+    def run(self, tolerance=0.01):
+        base_dir = self.context.root / self.base_dirname
+        if not base_dir.exists():
+            raise FileNotFoundError(f"{base_dir} does not exist")
+
+        results = self._collect_results(base_dir)
+        if not results:
+            raise FileNotFoundError(f"No completed k-point results found under {base_dir}")
+
+        k_values = np.array([item[0] for item in results], dtype=float)
+        energy = np.array([item[1] for item in results], dtype=float)
+        convergence_index = self._converged_index(energy, float(tolerance))
+
+        with working_dir(base_dir):
+            with Path("kpoint_convergence.dat").open("w") as file:
+                file.write("# case k total_energy_eV delta_from_previous_eV\n")
+                previous_energy = None
+                for k_value, total_energy, case_name in results:
+                    if previous_energy is None:
+                        delta = "nan"
+                    else:
+                        delta = f"{abs(total_energy - previous_energy):.10f}"
+                    file.write(f"{case_name} {k_value:d} {total_energy:.10f} {delta}\n")
+                    previous_energy = total_energy
+
+            plt.figure()
+            plt.plot(k_values, energy, "ro-", label="Total energy")
+            if convergence_index is not None:
+                converged_k = k_values[convergence_index]
+                plt.axvspan(converged_k, max(k_values), alpha=0.2, color="tab:green", label="Converged region")
+                plt.axvline(converged_k, color="tab:green", linestyle="--", linewidth=1.0)
+                print(f"Converged at k = {int(converged_k)} with tolerance {float(tolerance):.6f} eV")
+            else:
+                print(f"No converged k-point found with tolerance {float(tolerance):.6f} eV")
+
+            plt.xlabel("k-point sampling")
+            plt.ylabel("Total energy (eV)")
+            plt.title("K-point convergence")
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig("kpoint_convergence.png")
+            plt.close()
+
+        return {
+            "results": results,
+            "converged_k": None if convergence_index is None else int(k_values[convergence_index]),
+            "figure": base_dir / "kpoint_convergence.png",
+            "data": base_dir / "kpoint_convergence.dat",
+        }
+
+
 class BulkEosOperation(BaseOperation):
     base_dirname = "02.volume_eos"
     default_scale_mask = np.array([1.0, 1.0, 1.0])
@@ -583,6 +680,7 @@ class siesta_eos:
         self.origin_dir = self.context.origin_dir
         self.struct = self.context.struct
         self._kpoint_sampling = KPointSamplingOperation(self.context)
+        self._kpoint_analysis = KPointAnalysisOperation(self.context)
         self._bulk_eos = BulkEosOperation(self.context)
         self._slab_eos = SlabEosOperation(self.context)
         self._sliding = SlidingOperation(self.context)
@@ -594,6 +692,9 @@ class siesta_eos:
 
     def kpoint_sampling(self, sym=1, kpoints=None):
         return self._kpoint_sampling.run(sym=sym, kpoints=kpoints)
+
+    def kpoint_analysis(self, tolerance=0.01):
+        return self._kpoint_analysis.run(tolerance=tolerance)
 
     def eos_bulk(self, ratio_range=None, scale_mask=None):
         return self._bulk_eos.run(ratio_range=ratio_range, scale_mask=scale_mask)
