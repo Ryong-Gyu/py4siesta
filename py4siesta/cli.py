@@ -1,7 +1,10 @@
+import glob
+
 import numpy as np
 from NanoCore import s2
 
 from .operations import siesta_eos
+from .post_process import plot_band_structure, plot_pldos
 
 
 BANNER = """            \\\///
@@ -24,6 +27,8 @@ MENU = """ ======================= K-point Sampling ========================
  4) Bulk    5) Slab    6) Sliding    7) Distance    8) Analysis
  ======================= Job Submission ==========================
  9) K-point Sampling   10) Structure Optimization
+ ========================= Post-Process ==========================
+ 11) Band Structure    12) PLDOS
  ============================ Utility ============================
  01) Generate Geometries
 
@@ -85,6 +90,15 @@ def _prompt_menu_token(message: str) -> str:
         if value:
             return value
         print("Input cannot be empty.")
+
+
+def _select_existing_or_prompt(pattern: str, prompt: str):
+    matches = sorted(glob.glob(pattern))
+    if matches:
+        file_type = pattern.replace("*", "")
+        print(f"Found {file_type} files existing: {', '.join(matches)}")
+        return matches[0]
+    return _prompt_str(prompt)
 
 
 def _prompt_choice(message: str, valid_choices) -> str:
@@ -260,9 +274,11 @@ def main():
         except ValueError:
             mode = None
 
-    vasp = siesta_eos()
+    vasp = None
+    if mode not in {0, 11, 12, None}:
+        vasp = siesta_eos()
 
-    if mode in {4, 5, 6, 7, 8}:
+    if mode in {4, 5, 6, 7, 8} and vasp is not None:
         _print_origin_structure(vasp.struct)
         print("\n")
 
@@ -348,6 +364,25 @@ def main():
 
     elif mode == 10:
         vasp.qsub("opt")
+
+    elif mode == 11:
+        _show_section("Plot Band Structure")
+        bands_path = _select_existing_or_prompt("*.bands", "Input .bands file path: ")
+        emin = _prompt_optional_float("Input minimum energy for band structure (eV)", default=-2.0)
+        emax = _prompt_optional_float("Input maximum energy for band structure (eV)", default=4.0)
+        result = plot_band_structure(bands_path=bands_path, emin=emin, emax=emax)
+        print(f"VBM: {result['vbm']:.6f} eV")
+        print(f"Band gap: {result['bandgap']:.6f} eV")
+        print(f"Generated: {result['figure']}, {result['special_k']}, {result['kpath']}, {result['bands']}")
+
+    elif mode == 12:
+        _show_section("Plot PLDOS")
+        pdos_path = _select_existing_or_prompt("*.PDOS", "Input .PDOS file path: ")
+        emin = _prompt_optional_float("Input minimum energy for PLDOS plot (eV)", default=-4.0)
+        emax = _prompt_optional_float("Input maximum energy for PLDOS plot (eV)", default=2.0)
+        result = plot_pldos(pdos_path=pdos_path, emin=emin, emax=emax)
+        print(f"Fermi level: {result['fermi_level']:.6f} eV")
+        print(f"Generated: {result['figure']}, {result['z']}, {result['energy']}, {result['pldos']}")
 
     elif mode == "01":
         _run_generate_geometries_menu(vasp)
