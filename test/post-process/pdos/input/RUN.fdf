@@ -1,0 +1,87 @@
+#(1) General system descriptors
+
+SystemName            MgO # Descriptive name of the system
+SystemLabel           MgO # Short name for naming files
+%include STRUCT.fdf
+%include KPT.fdf
+%include BASIS.fdf
+#%include GRIMME.fdf
+#%include TS.fdf # for transiesta calculation
+
+#(4) DFT, Grid, SCF
+
+XC.functional         LDA           # LDA or GGA (default = LDA)
+XC.authors            CA            # CA (Ceperley-Aldr) = PZ
+                                    #    (Perdew-Zunger) - LDA - Default
+                                    # PW92 (Perdew-Wang-92) - LDA
+                                    # PBE (Perdew-Burke-Ernzerhof) - GGA
+MeshCutoff            500.00 Ry     # Default: 50.0 Ry ~ 0.444 Bohr
+                                    #         100.0 Ry ~ 0.314 Bohr
+
+MaxSCFIterations      300           # Default: 50
+DM.MixingWeight       0.05         # Default: 0.25
+DM.NumberPulay        10            # Default: 0
+DM.Tolerance          1.d-4         # Default: 1.d-4
+DM.UseSaveDM          T             # because of the bug
+SCFMustConverge       .true.
+SCF.H.Tolerance       1.d-3 eV        #Hamiltonian tolerance
+DM.AllowReuse         .false.
+
+
+#(5) Eigenvalue problem: order-N or diagonalization
+SolutionMethod        Diagon        # or Transiesta
+ElectronicTemperature 300.0 K       # Default: 300.0 K
+
+
+User.Basis T
+
+#(6) Molecular dynamics and relaxations
+MD.TypeOfRun          CG            # Type of dynamics:
+MD.NumCGsteps         0           # 0 for single-point / 100 for gopt
+MD.MaxCGDispl         0.2 Bohr      # Default: 0.2 Bohr
+MD.MaxForceTol        0.01 eV/Ang   # Default: 0.04 eV/Ang
+MD.MaxStressTol       1.0 GPa       # Default: 1.0 GPa
+#MD.VariableCell       .true.
+
+#LDOS option
+#%block LocalDensityOfStates
+# -4.7800 -4.6800 eV
+#%endblock LocalDensityOfStates
+
+# Geometry Constraints
+#%block Geometry.Constraints
+#   position from 1 to 4
+#   position from 5 to 5  1 1 0
+#%endblock Geometry.Constraints
+
+#SlabDipoleCorrection .true.
+
+#(9) Output options
+#WriteBands            T      # SystemLabel.bands, band structure
+WriteMullikenPop      1      # Mulliken population analysis,
+SaveRho               T      # SystemLabel.RHO, rho2xsf(3D),macroave-charge dendity(1D)
+SaveDeltaRho          T      # SystemLabel.DRHO
+SaveElectrostaticPotential T # SystemLabel.VH , macroave-potential
+SaveTotalPotential    T      # SystemLabel.VT
+WriteMDXmol           T      # SystemLabel.ANI, optimization
+WriteCoorXmol        .true.  # SystemLavel.xyz
+WriteCoorStep        .true.  # SystemLabel.XV , rho2xsf
+
+
+DFT-half              F
+DFT-half.Local        T
+DFT-half.Local.SCF    T
+DFT-half.Local.SCF.Sigma  30.0
+
+
+
+BandLinesScale ReciprocalLatticeVectors
+%block BandLines
+  1  0.00000000	0.00000000	0.00000000	Gamma
+ 60  0.50000000	0.00000000	0.50000000	X
+ 60  0.50000000	0.25000000	0.75000000	W
+ 60  0.37500000	0.37500000	0.75000000	K
+ 60  0.00000000	0.00000000	0.00000000	Gamma
+ 60  0.50000000	0.50000000	0.50000000	L
+ 60  0.50000000	0.25000000	0.75000000	W
+%endblock BandLines

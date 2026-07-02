@@ -32,6 +32,26 @@ Editable install:
 pip install -e .
 ```
 
+### Configure local SIESTA executables
+
+The bundled `NanoCore` module reads executable locations from `NanoCore/env.py`. Before running post-process features that call SIESTA utilities, revise this file manually for your local environment.
+
+Update values such as:
+
+```python
+siesta_calculator = "/path/to/siesta"
+siesta_psf_location = "/path/to/psf"
+siesta_util_location = "/path/to/siesta/utils"
+siesta_util_band = "gnubands"
+siesta_util_dos = "Eig2DOS"
+siesta_util_pdos = "fmpdos"
+siesta_util_rho = "rho2xsf"
+siesta_util_vh = "macroave"
+siesta_util_pldos = "/path/to/PyProjection.py"
+```
+
+For PDOS extraction, make sure `siesta_util_location` points to the directory containing the `fmpdos` executable, or set `siesta_util_pdos` to the full executable path.
+
 ## Dependencies
 
 The package declares these runtime dependencies:
@@ -43,11 +63,10 @@ The package declares these runtime dependencies:
 The repository also includes the private/bundled `NanoCore` module used by the CLI.
 
 > ### About `NanoCore`
-
 > This project is based on `NanoCore` which is old version of on-going project [`OORINano`](https://github.com/yhkimlab/OORINano). `NanoCore` is imported locally from this repository.
-
+>  
 > That means:
-
+>  
 > - `python -m py4siesta` works from this repository because the bundled `NanoCore/` package is present locally
 > - `pip install .` or `pip install -e .` from this repository installs both `py4siesta` and the bundled `NanoCore` package defined in `pyproject.toml`
 > - there is no need to fetch `NanoCore` from an external site or package index
@@ -118,7 +137,9 @@ The tool copies this reference input and creates calculation case directories fr
 ### 4. Post-Process
 - **Menu 11 - Plot Band Structure**
    Plot a SIESTA `.bands` file from the current directory or a user-provided path. If a local `.bands` file exists, it is selected automatically. The command asks for the energy window and generates `band.png`.  
-- **Menu 12 - Plot PLDOS**
+- **Menu 12 - Generate PDOS CSV**
+   Extract total and selected-orbital PDOS data from a SIESTA `.PDOS` file in the current directory. The command asks for the energy window relative to `E_v` with defaults `-4` and `12`, then repeats the native `fmpdos` atom/orbital inputs for each selection: atom number/species label (`0` for all atoms), `n` (`0` for all), `l` (`-1` for all), and `m` (`9` for all). Input and intermediate output file names are selected automatically. Matching `<label>.EIG` and `<label>.DOS` files are required; matching `<label>.bands` is used for `E_v` when present, otherwise `E_v` is estimated from `<label>.EIG`. Existing same-named `fmpdos` output files are removed before regeneration, spin columns are written only when present, and the combined data and plot are written to `PDOS.csv` and `pdos.png`.
+- **Menu 13 - Plot PLDOS**
    Plot a SIESTA `.PDOS` file from the current directory or a user-provided path. If a local `.PDOS` file exists, it is selected automatically. The command uses matching `<label>.xyz` and `<label>.EIG` files and generates `pldos.png`.
 
 ### 5. Extra

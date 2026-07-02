@@ -1,6 +1,8 @@
 import glob
 import math
 import os
+import re
+import subprocess
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -142,7 +144,7 @@ def plot_band_structure(bands_path=None, emin=-2.0, emax=4.0, output_path="band.
     ax.set_ylim(float(emin), float(emax))
     ax.set_xticks(data.special_k)
     ax.set_xticklabels(data.labels, fontsize=16)
-    ax.set_ylabel(r"E-$E_V$", fontsize=16)
+    ax.set_ylabel(r"$E-E_V$", fontsize=16)
     ax.tick_params(axis="y", labelsize=16)
 
     for kpoint in data.special_k:
@@ -190,6 +192,315 @@ def _read_fermi_level(eig_path):
     if not first_line:
         raise ValueError(f"{eig_path} does not contain a Fermi level.")
     return float(first_line[0])
+
+
+def _find_matching_file(label, suffix, work_dir):
+    path = work_dir / f"{label}{suffix}"
+    if path.is_file():
+        return path
+
+    matches = sorted(work_dir.glob(f"*{suffix}"))
+    if not matches:
+        raise FileNotFoundError(f"No *{suffix} file found in {work_dir}.")
+    return matches[0]
+
+
+def _find_optional_matching_file(label, suffix, work_dir):
+    try:
+        return _find_matching_file(label, suffix, work_dir)
+    except FileNotFoundError:
+        return None
+
+
+def _read_eig_levels(eig_path):
+    lines = eig_path.read_text().splitlines()
+    if len(lines) < 2:
+        raise ValueError(f"{eig_path} is too short to be a SIESTA .EIG file.")
+
+    fermi_level = float(lines[0].split()[0])
+    neig, nspin, nkpoints = [int(value) for value in lines[1].split()[:3]]
+    total_eigenvalues = neig * nspin
+    lines_per_kpoint = int(math.ceil(float(total_eigenvalues) / 10.0))
+
+    energies = np.zeros((nkpoints, total_eigenvalues), dtype=float)
+    line_index = 2
+    for ikpoint in range(nkpoints):
+        eigenvalue_index = 0
+        for segment_index in range(lines_per_kpoint):
+            words = lines[line_index].split()
+            line_index += 1
+            values = words[1:] if segment_index == 0 else words
+            for value in values:
+                if eigenvalue_index >= total_eigenvalues:
+                    break
+                energies[ikpoint, eigenvalue_index] = float(value)
+                eigenvalue_index += 1
+
+    occupied_cutoff = fermi_level + (8.617e-5 * 300.0 * math.log(99.0))
+    below_fermi = energies[energies <= occupied_cutoff]
+    above_fermi = energies[energies > occupied_cutoff]
+    vbm = float(np.max(below_fermi)) if below_fermi.size else fermi_level
+    cbm = float(np.min(above_fermi)) if above_fermi.size else fermi_level
+    return {
+        "fermi_level": fermi_level,
+        "vbm": vbm,
+        "cbm": cbm,
+        "bandgap": max(0.0, cbm - vbm),
+        "nspin": nspin,
+    }
+
+
+def _read_pdos_energy_reference(label, work_dir, eig_path):
+    bands_path = _find_optional_matching_file(label, ".bands", work_dir)
+    if bands_path is not None:
+        band_data = read_band_structure(bands_path)
+        return {
+            "fermi_level": band_data.fermi_level,
+            "vbm": band_data.vbm,
+            "bandgap": band_data.bandgap,
+            "nspin": band_data.nspin,
+            "source": bands_path,
+        }
+
+    eig_data = _read_eig_levels(eig_path)
+    eig_data["source"] = eig_path
+    return eig_data
+
+
+def _resolve_siesta_utility(command_name):
+    from NanoCore.env import siesta_util_location
+
+    try:
+        from NanoCore.env import siesta_util_pdos
+    except ImportError:
+        siesta_util_pdos = command_name
+
+    utility = Path(str(siesta_util_pdos)).expanduser()
+    if utility.is_absolute() or len(utility.parts) > 1:
+        return utility
+
+    utility_dir = Path(str(siesta_util_location)).expanduser()
+    return utility_dir / str(siesta_util_pdos)
+
+
+def _selection_from_orbital_index(orbital_index):
+    tokens = str(orbital_index).split("_")
+    if not tokens or any(token == "" for token in tokens) or len(tokens) > 4:
+        raise ValueError(
+            "Orbital selection must use atom_or_species[_n[_l[_m]]], e.g. Ba_0, C_2_1_0, or 1_2_1."
+        )
+
+    selection = {
+        "output": orbital_index,
+        "target": tokens[0],
+    }
+    if len(tokens) >= 2:
+        selection["n"] = int(tokens[1])
+    if len(tokens) >= 3:
+        selection["l"] = int(tokens[2])
+    if len(tokens) >= 4:
+        selection["m"] = int(tokens[3])
+    return selection
+
+
+def _sanitize_pdos_output_token(value):
+    token = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value).strip())
+    return token.strip("._") or "selection"
+
+
+def _default_pdos_output_name(selection):
+    target = _sanitize_pdos_output_token(selection["target"])
+    n_value = int(selection.get("n", 0))
+    name_parts = ["PDOS", target, f"n{n_value}"]
+    if n_value != 0:
+        l_value = int(selection.get("l", -1))
+        name_parts.append(f"l{l_value}")
+        if l_value != -1:
+            name_parts.append(f"m{int(selection.get('m', 9))}")
+    return "_".join(name_parts)
+
+
+def _normalize_fmpdos_selection(selection):
+    if isinstance(selection, str):
+        return _selection_from_orbital_index(selection)
+
+    try:
+        target = str(selection["target"]).strip()
+    except (KeyError, TypeError):
+        raise ValueError("PDOS selection must include a target value.") from None
+
+    if not target:
+        raise ValueError("PDOS selection target value cannot be empty.")
+
+    normalized = {
+        "target": target,
+    }
+    if "n" in selection and selection["n"] is not None:
+        normalized["n"] = int(selection["n"])
+    if "l" in selection and selection["l"] is not None:
+        normalized["l"] = int(selection["l"])
+    if "m" in selection and selection["m"] is not None:
+        normalized["m"] = int(selection["m"])
+    output_name = str(selection.get("output") or _default_pdos_output_name(normalized)).strip()
+    if not output_name:
+        raise ValueError("PDOS selection output value cannot be empty.")
+    normalized["output"] = output_name
+    return normalized
+
+
+def _run_fmpdos(pdos_file, selection, executable):
+    input_lines = [
+        pdos_file.name,
+        selection["output"],
+        selection["target"],
+    ]
+
+    n_value = selection.get("n", 0)
+    input_lines.append(str(n_value))
+    if n_value != 0:
+        l_value = selection.get("l", -1)
+        input_lines.append(str(l_value))
+        if l_value != -1:
+            input_lines.append(str(selection.get("m", 9)))
+
+    subprocess.run(
+        [str(executable)],
+        input="\n".join(input_lines) + "\n",
+        text=True,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+
+def _read_pdos_columns(filename, energy_reference, emin, emax, nspin):
+    energy = []
+    pdos_columns = []
+
+    with open(filename) as pdos_file:
+        for line in pdos_file:
+            words = line.split()
+            if not words or words[0].startswith("#"):
+                continue
+
+            shifted_energy = float(words[0]) - energy_reference
+            if not (float(emin) < shifted_energy < float(emax)):
+                continue
+
+            energy.append([shifted_energy])
+            row = [float(words[1])]
+            if nspin > 1 and len(words) >= 3:
+                row.append(-float(words[2]))
+            pdos_columns.append(row)
+
+    if not energy:
+        raise ValueError(f"No PDOS data in {filename} within the requested energy window.")
+
+    return (
+        np.array(energy, dtype=float),
+        np.array(pdos_columns, dtype=float),
+    )
+
+
+def _plot_pdos(data, labels, output_path, emin, emax):
+    fig, ax = plt.subplots(figsize=(5.0, 3.0))
+
+    for axis in ["top", "bottom", "left", "right"]:
+        ax.spines[axis].set_linewidth(2)
+    ax.xaxis.set_tick_params(width=2)
+    ax.yaxis.set_tick_params(width=2)
+    ax.tick_params(axis="x", direction="in", length=6)
+    ax.tick_params(axis="y", direction="in", length=6)
+
+    energy = data[:, 0]
+    colors = ["k", "r", "tab:blue", "tab:green", "tab:orange", "tab:purple"]
+    for column_index in range(1, data.shape[1]):
+        label = labels[column_index - 1] if column_index - 1 < len(labels) else None
+        ax.plot(
+            energy,
+            data[:, column_index],
+            linewidth=2,
+            color=colors[(column_index - 1) % len(colors)],
+            label=label,
+        )
+
+    ax.axvline(x=0.0, color="k", linestyle="--", linewidth=2.0)
+    ax.set_xlim(float(emin), float(emax))
+    ax.set_xticks(np.linspace(float(emin), float(emax), 5))
+    ax.set_xlabel(r"$E-E_V$", fontsize=16)
+    ax.set_ylabel("DOS", fontsize=16)
+    ax.tick_params(axis="both", labelsize=16)
+    if labels:
+        ax.legend(fontsize=9, frameon=False)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, transparent=True)
+    plt.close(fig)
+
+
+def generate_pdos_csv(
+    pdos_path=None,
+    orbital_indices=None,
+    emin=-4.0,
+    emax=12.0,
+    output_path="PDOS.csv",
+    figure_path="pdos.png",
+):
+    path = _find_pdos_file(pdos_path).resolve()
+    work_dir = path.parent
+    label = path.name[:-5] if path.name.endswith(".PDOS") else path.stem
+    eig_path = _find_matching_file(label, ".EIG", work_dir)
+    dos_path = _find_matching_file(label, ".DOS", work_dir)
+    selected_orbitals = [_normalize_fmpdos_selection(selection) for selection in (orbital_indices or [])]
+
+    previous_dir = Path.cwd()
+    try:
+        os.chdir(work_dir)
+        reference = _read_pdos_energy_reference(label, Path.cwd(), Path(eig_path.name))
+        fermi_level = reference["fermi_level"]
+        vbm = reference["vbm"]
+        nspin = reference["nspin"]
+        fmpdos_executable = _resolve_siesta_utility("fmpdos")
+
+        generated_files = []
+        generated_labels = []
+        for selection in selected_orbitals:
+            output_file = Path(selection["output"])
+            if output_file.exists():
+                output_file.unlink()
+            _run_fmpdos(Path(path.name), selection, fmpdos_executable)
+            if not output_file.is_file():
+                raise FileNotFoundError(f"fmpdos did not generate expected output file: {output_file}")
+            generated_files.append(output_file)
+            generated_labels.append(selection["output"])
+
+        energy, dos_columns = _read_pdos_columns(Path(dos_path.name), vbm, emin, emax, nspin)
+        data = np.hstack((energy, dos_columns))
+        plot_labels = ["total"] if dos_columns.shape[1] == 1 else ["total spin 1", "total spin 2"]
+
+        for generated_file, generated_label in zip(generated_files, generated_labels):
+            _, projected_columns = _read_pdos_columns(generated_file, vbm, emin, emax, nspin)
+            data = np.hstack((data, projected_columns))
+            if projected_columns.shape[1] == 1:
+                plot_labels.append(generated_label)
+            else:
+                plot_labels.extend([f"{generated_label} spin 1", f"{generated_label} spin 2"])
+
+        np.savetxt(output_path, data, delimiter=",")
+        _plot_pdos(data, plot_labels, figure_path, emin, emax)
+
+        return {
+            "csv": work_dir / output_path,
+            "figure": work_dir / figure_path,
+            "fermi_level": fermi_level,
+            "vbm": vbm,
+            "nspin": nspin,
+            "pdos": path,
+            "dos": dos_path,
+            "reference": work_dir / reference["source"],
+            "orbitals": selected_orbitals,
+        }
+    finally:
+        os.chdir(previous_dir)
 
 
 def plot_pldos(

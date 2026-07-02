@@ -4,7 +4,7 @@ import numpy as np
 from NanoCore import s2
 
 from .operations import siesta_eos
-from .post_process import plot_band_structure, plot_pldos
+from .post_process import generate_pdos_csv, plot_band_structure, plot_pldos
 
 
 BANNER = """            \\\///
@@ -28,7 +28,7 @@ MENU = """ ======================= K-point Sampling ========================
  ======================= Job Submission ==========================
  9) K-point Sampling   10) Structure Optimization
  ========================= Post-Process ==========================
- 11) Band Structure    12) PLDOS
+ 11) Band Structure    12) PDOS      13) PLDOS
  ============================ Utility ============================
  01) Generate Geometries
 
@@ -129,6 +129,33 @@ def _prompt_repeated_ints(message: str):
             print("Please enter a positive integer.")
             continue
         values.append(value)
+
+
+def _prompt_fmpdos_selections():
+    print("Input fmpdos selections for PDOS extraction.")
+    print("Use atom number, chemical label, or 0 for all atoms.")
+    print("Use n=0 for all n, l=-1 for all l, or m=9 for all m.")
+    print("Press Enter on an empty atom/species prompt to finish.")
+    selections = []
+    while True:
+        target = input(
+            "Extract data for atom index (atom NUMBER, 0 for all atoms), "
+            "or all atoms of species (chemical LABEL): "
+        ).strip()
+        if not target:
+            return selections
+        n_value = _prompt_int("Extract data for n= ... (0 for all n): ")
+        selection = {
+            "target": target,
+            "n": n_value,
+        }
+        if n_value != 0:
+            l_value = _prompt_int("Extract data for l= ... (-1 for all l): ")
+            selection["l"] = l_value
+            if l_value != -1:
+                selection["m"] = _prompt_int("Extract data for m= ... (9 for all m): ")
+
+        selections.append(selection)
 
 
 def _prompt_direction_mask(message: str, default):
@@ -275,7 +302,7 @@ def main():
             mode = None
 
     vasp = None
-    if mode not in {0, 11, 12, None}:
+    if mode not in {0, 11, 12, 13, None}:
         vasp = siesta_eos()
 
     if mode in {4, 5, 6, 7, 8} and vasp is not None:
@@ -371,11 +398,22 @@ def main():
         emin = _prompt_optional_float("Input minimum energy for band structure (eV)", default=-2.0)
         emax = _prompt_optional_float("Input maximum energy for band structure (eV)", default=4.0)
         result = plot_band_structure(bands_path=bands_path, emin=emin, emax=emax)
-        print(f"VBM: {result['vbm']:.6f} eV")
         print(f"Band gap: {result['bandgap']:.6f} eV")
         print(f"Generated: {result['figure']}, {result['special_k']}, {result['kpath']}, {result['bands']}")
 
     elif mode == 12:
+        _show_section("Generate PDOS CSV")
+        emin = _prompt_optional_float("Input minimum energy for PDOS data (eV)", default=-4.0)
+        emax = _prompt_optional_float("Input maximum energy for PDOS data (eV)", default=12.0)
+        orbital_indices = _prompt_fmpdos_selections()
+        result = generate_pdos_csv(
+            orbital_indices=orbital_indices,
+            emin=emin,
+            emax=emax,
+        )
+        print(f"Generated: {result['csv']}, {result['figure']}")
+
+    elif mode == 13:
         _show_section("Plot PLDOS")
         pdos_path = _select_existing_or_prompt("*.PDOS", "Input .PDOS file path: ")
         emin = _prompt_optional_float("Input minimum energy for PLDOS plot (eV)", default=-4.0)
