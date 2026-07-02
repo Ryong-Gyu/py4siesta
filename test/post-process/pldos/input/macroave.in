@@ -1,0 +1,9 @@
+Siesta            # Which code have you used to get the input data?
+potential            # Which is the input data used to compute the band offset?
+A                 # Name of the file where the input data is stored
+2                 # Number of convolutions required to calculate the macro. ave.
+7.555             # First length for the filter function in macroscopic average
+7.475             # Second length for the filter function in macroscopic average
+736               # Total charge 
+spline            # Type of interpolation
+

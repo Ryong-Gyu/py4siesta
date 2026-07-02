@@ -1,0 +1,66 @@
+#(1) General system descriptors
+SystemName            Device # Descriptive name of the system
+SystemLabel           Device # Short name for naming files
+%include STRUCT.fdf
+%include KPT.fdf
+%include BASIS.fdf
+#%include GRIMME.fdf
+#%include TS.fdf # for transiesta calculation
+#(4) DFT, Grid, SCF
+XC.functional         LDA           # LDA or GGA (default = LDA)
+XC.authors            CA            # CA (Ceperley-Aldr) = PZ
+                                    #    (Perdew-Zunger) - LDA - Default
+                                    # PW92 (Perdew-Wang-92) - LDA
+                                    # PBE (Perdew-Burke-Ernzerhof) - GGA
+MeshCutoff            300.00 Ry     # Default: 50.0 Ry ~ 0.444 Bohr
+                                    #         100.0 Ry ~ 0.314 Bohr
+MaxSCFIterations      500           # Default: 50
+DM.MixingWeight       0.05         # Default: 0.25
+DM.NumberPulay        10            # Default: 0
+DM.Tolerance          1.d-4         # Default: 1.d-4
+DM.UseSaveDM          T             # because of the bug
+SCFMustConverge       .true.
+SCF.H.Tolerance       1.d-3 eV        #Hamiltonian tolerance
+#(5) Eigenvalue problem: order-N or diagonalization
+SolutionMethod        Diagon        # or Transiesta
+ElectronicTemperature 300.0 K       # Default: 300.0 K
+#(6) Molecular dynamics and relaxations
+MD.TypeOfRun          CG            # Type of dynamics:
+MD.NumCGsteps         0       # 0 for single-point / 100 for gopt
+MD.MaxCGDispl         0.2 Bohr      # Default: 0.2 Bohr
+MD.MaxForceTol        0.04 eV/Ang   # Default: 0.04 eV/Ang
+MD.MaxStressTol       1.0 GPa       # Default: 1.0 GPa
+#(8) MS-DFT options
+#SlabDipoleCorrection .true.
+MSDFT .true.
+MSDFT.SD.Voltage 0.0 eV
+MSDFT.ElecLeftStart  1
+MSDFT.ElecLeftEnd  17
+MSDFT.ElecRightStart 91
+MSDFT.ElecRightEnd   107
+#MSCDFT.QuasiFermiLvl  .true.
+#LDOS option
+#%block LocalDensityOfStates
+# -4.7800 -4.6800 eV
+#%endblock LocalDensityOfStates
+# Geometry Constraints
+#%block Geometry.Constraints
+#   position from 1 to 12
+#   position from 23 to 32  1. 1. 0.
+#   position from 33 to 70
+#%endblock Geometry.Constraints
+SlabDipoleCorrection .true.
+#(9) Output options
+#WriteBands            T      # SystemLabel.bands, band structure
+#WriteMullikenPop      1      # Mulliken population analysis,
+SaveRho               T      # SystemLabel.RHO, rho2xsf(3D),macroave-charge dendity(1D)
+SaveDeltaRho          T      # SystemLabel.DRHO
+SaveElectrostaticPotential T # SystemLabel.VH , macroave-potential
+SaveTotalPotential    T      # SystemLabel.VT
+WriteMDXmol           T      # SystemLabel.ANI, optimization
+WriteCoorXmol        .true.  # SystemLavel.xyz
+WriteCoorStep        .true.  # SystemLabel.XV , rho2xsf
+WriteEigenvalues      T      # SystemLabel.out [otherwise ~.EIG]
+AllocReportLevel      0      # SystemLabel.alloc, Default: 0
+TS.HS.Save           .true.
+TS.DE.Save           .true.

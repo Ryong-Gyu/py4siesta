@@ -42,15 +42,15 @@ The package declares these runtime dependencies:
 
 The repository also includes the private/bundled `NanoCore` module used by the CLI.
 
-### About `NanoCore`
+> ### About `NanoCore`
 
-This project is based on `NanoCore` which is old version of on-going project [`OORINano`](https://github.com/yhkimlab/OORINano). `NanoCore` is imported locally from this repository.
+> This project is based on `NanoCore` which is old version of on-going project [`OORINano`](https://github.com/yhkimlab/OORINano). `NanoCore` is imported locally from this repository.
 
-That means:
+> That means:
 
-- `python -m py4siesta` works from this repository because the bundled `NanoCore/` package is present locally
-- `pip install .` or `pip install -e .` from this repository installs both `py4siesta` and the bundled `NanoCore` package defined in `pyproject.toml`
-- there is no need to fetch `NanoCore` from an external site or package index
+> - `python -m py4siesta` works from this repository because the bundled `NanoCore/` package is present locally
+> - `pip install .` or `pip install -e .` from this repository installs both `py4siesta` and the bundled `NanoCore` package defined in `pyproject.toml`
+> - there is no need to fetch `NanoCore` from an external site or package index
 
 ## Running the program
 
@@ -115,13 +115,19 @@ The tool copies this reference input and creates calculation case directories fr
 - **Menu 10 - Structure Optimization**
    Submit generated structure-optimization jobs.
 
-### 4. Extra
+### 4. Post-Process
+- **Menu 11 - Plot Band Structure**
+   Plot a SIESTA `.bands` file from the current directory or a user-provided path. If a local `.bands` file exists, it is selected automatically. The command asks for the energy window and generates `band.png`.  
+- **Menu 12 - Plot PLDOS**
+   Plot a SIESTA `.PDOS` file from the current directory or a user-provided path. If a local `.PDOS` file exists, it is selected automatically. The command uses matching `<label>.xyz` and `<label>.EIG` files and generates `pldos.png`.
+
+### 5. Extra
 - **Menu 01 - Generate Geometries**
    Open the geometry-generation submenu.
-- **Submenu 1 - Move structure**
-   Translate the entire structure by a user-defined displacement vector and write a new `STRUCT.fdf`.
-- **Submenu 2 - Interpolate structure**
-   Generate interpolated structures between two `STRUCT.fdf` files, with optional extrapolated points.
+  - **Submenu 1 - Move structure**
+     Translate the entire structure by a user-defined displacement vector and write a new `STRUCT.fdf`.
+  - **Submenu 2 - Interpolate structure**
+     Generate interpolated structures between two `STRUCT.fdf` files, with optional extrapolated points.
 
 ## Quick usage summary
 

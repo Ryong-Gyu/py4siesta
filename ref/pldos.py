@@ -89,15 +89,8 @@ levels = np.linspace(Zmin, Zmax, 100)
 print(Z.min(), Z.max())
 
 
-#cmap = plt.cm.get_cmap("jet")
-
 cmap = plt.cm.get_cmap("viridis")
 
-#base_cmap = plt.cm.get_cmap("magma")
-#cmap = colors.LinearSegmentedColormap.from_list(
-#    'half',
-#    base_cmap(np.linspace(0.0, 0.5, 256))
-#)
 
 import pylab as plb
 cset = plb.contourf(X, Y, Z, levels, cmap=cmap, extend = 'both')
