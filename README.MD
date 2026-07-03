@@ -176,6 +176,28 @@ python -m py4siesta
 python {py4siesta_path}/run.py
 ```
 
+## Agent JSON Tool
+
+For AI agents or scripts that need non-interactive access while preserving the numbered menu CLI, use:
+
+```bash
+py4siesta-tool <command> [options]
+```
+
+The command prints one JSON object. Successful commands include `"ok": true`; failures return a nonzero exit status and a JSON error object.
+
+Examples:
+
+```bash
+py4siesta-tool kpoint-bulk --kpoints 2 4 6
+py4siesta-tool eos-sliding --selection 20-30 --mode fractional --vector 0.25 0.50
+py4siesta-tool band --bands-path Solid.bands --emin -2 --emax 4
+py4siesta-tool pdos --pdos-path MgO.PDOS --orbital Mg_0 --emin -4 --emax 12
+py4siesta-tool pldos --pdos-path Device.PDOS --emin -4 --emax 2
+```
+
+Run `py4siesta-tool --help` or `py4siesta-tool <command> --help` for the full command list and required inputs.
+
 ## Bundled NanoCore
 
 This project is based on `NanoCore`, an older version of the ongoing [`OORINano`](https://github.com/yhkimlab/OORINano) project. `NanoCore` is imported locally from this repository.

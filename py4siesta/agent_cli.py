@@ -1,0 +1,287 @@
+"""Non-interactive JSON command line interface for agent use."""
+
+import argparse
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import numpy as np
+
+_matplotlib_config_dir = Path(tempfile.gettempdir()) / "py4siesta-matplotlib"
+_matplotlib_config_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", str(_matplotlib_config_dir))
+
+from NanoCore import s2
+
+from .cli import _prepare_sliding_cases
+from .operations import siesta_eos
+from .post_process import generate_pdos_csv, plot_band_structure, plot_pldos
+
+
+def _jsonable(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _success(command, result=None):
+    return {
+        "ok": True,
+        "command": command,
+        "result": _jsonable({} if result is None else result),
+    }
+
+
+def _failure(command, exc):
+    return {
+        "ok": False,
+        "command": command,
+        "error": {
+            "type": exc.__class__.__name__,
+            "message": str(exc),
+        },
+    }
+
+
+def _tool():
+    return siesta_eos()
+
+
+def _scale_mask(values):
+    return None if values is None else [int(value) for value in values]
+
+
+def _cmd_kpoint_bulk(args):
+    _tool().kpoint_sampling(kpoints=args.kpoints)
+    return {"base_dir": "01.kpoint_sampling", "kpoints": args.kpoints}
+
+
+def _cmd_kpoint_slab(args):
+    kpoints = [[value, value, 1] for value in args.kpoints]
+    _tool().kpoint_sampling(sym=0, kpoints=kpoints)
+    return {"base_dir": "01.kpoint_sampling", "kpoints": kpoints}
+
+
+def _cmd_kpoint_analysis(args):
+    return _tool().kpoint_analysis(tolerance=args.tolerance)
+
+
+def _cmd_eos_bulk(args):
+    tool = _tool()
+    tool.eos_bulk(scale_mask=_scale_mask(args.scale_mask))
+    return {"base_dir": "02.volume_eos", "scale_mask": _scale_mask(args.scale_mask)}
+
+
+def _cmd_eos_slab(args):
+    tool = _tool()
+    tool.eos_slab(scale_mask=_scale_mask(args.scale_mask))
+    return {"base_dir": "02.slab_eos", "scale_mask": _scale_mask(args.scale_mask)}
+
+
+def _cmd_eos_sliding(args):
+    tool = _tool()
+    vectors = [np.array([float(first), float(second)], dtype=float) for first, second in args.vector]
+    sliding_cases = _prepare_sliding_cases(tool.struct, args.mode, vectors)
+    tool.eos_sliding(selection=args.selection, sliding_cases=sliding_cases)
+    return {
+        "base_dir": "02.sliding",
+        "selection": args.selection,
+        "mode": args.mode,
+        "vectors": vectors,
+    }
+
+
+def _cmd_distance_current(args):
+    distance = _tool().get_distance_min(args.selection)
+    return {"selection": args.selection, "distance": distance}
+
+
+def _cmd_distance_scan(args):
+    distance_range = np.linspace(args.start, args.end, args.points)
+    _tool().eos_distance(selection=args.selection, distance_range=distance_range)
+    return {
+        "base_dir": "02.distance",
+        "selection": args.selection,
+        "distance_range": distance_range,
+    }
+
+
+def _cmd_fit_structure(args):
+    _tool().find_optimized_lattice(mode=args.mode, selection=args.selection)
+    return {"mode": args.mode, "selection": args.selection}
+
+
+def _cmd_submit(args):
+    _tool().qsub(args.mode)
+    return {"mode": args.mode}
+
+
+def _cmd_band(args):
+    return plot_band_structure(bands_path=args.bands_path, emin=args.emin, emax=args.emax)
+
+
+def _cmd_pdos(args):
+    return generate_pdos_csv(
+        pdos_path=args.pdos_path,
+        orbital_indices=args.orbital,
+        emin=args.emin,
+        emax=args.emax,
+    )
+
+
+def _cmd_pldos(args):
+    return plot_pldos(
+        pdos_path=args.pdos_path,
+        emin=args.emin,
+        emax=args.emax,
+        zmin=args.zmin,
+        zmax=args.zmax,
+        broad=args.broad,
+        npoints=args.npoints,
+    )
+
+
+def _cmd_move_structure(args):
+    tool = _tool()
+    moved = tool.move(tool.struct, displacement=np.array([args.dx, args.dy, args.dz], dtype=float))
+    s2.Siesta(moved).write_struct()
+    return {"output": "STRUCT.fdf", "displacement": [args.dx, args.dy, args.dz]}
+
+
+def _cmd_interpolate_structure(args):
+    _tool().interpolate(
+        initial_path=args.initial,
+        final_path=args.final,
+        division_npt=args.division_npt,
+        extrapolate_npt=args.extrapolate_npt,
+    )
+    return {
+        "base_dir": "11.interpolate_structure",
+        "initial": args.initial,
+        "final": args.final,
+        "division_npt": args.division_npt,
+        "extrapolate_npt": args.extrapolate_npt,
+    }
+
+
+def _add_common_energy_window(parser, emin, emax):
+    parser.add_argument("--emin", type=float, default=emin)
+    parser.add_argument("--emax", type=float, default=emax)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="py4siesta-tool",
+        description="Non-interactive JSON tools for py4siesta.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    command = subparsers.add_parser("kpoint-bulk", help="Generate bulk k-point sampling cases.")
+    command.add_argument("--kpoints", type=int, nargs="+", required=True)
+    command.set_defaults(func=_cmd_kpoint_bulk)
+
+    command = subparsers.add_parser("kpoint-slab", help="Generate slab k-point sampling cases.")
+    command.add_argument("--kpoints", type=int, nargs="+", required=True)
+    command.set_defaults(func=_cmd_kpoint_slab)
+
+    command = subparsers.add_parser("kpoint-analysis", help="Analyze k-point convergence.")
+    command.add_argument("--tolerance", type=float, default=0.01)
+    command.set_defaults(func=_cmd_kpoint_analysis)
+
+    command = subparsers.add_parser("eos-bulk", help="Generate bulk EOS cases.")
+    command.add_argument("--scale-mask", type=int, nargs=3, metavar=("X", "Y", "Z"))
+    command.set_defaults(func=_cmd_eos_bulk)
+
+    command = subparsers.add_parser("eos-slab", help="Generate slab EOS cases.")
+    command.add_argument("--scale-mask", type=int, nargs=3, metavar=("X", "Y", "Z"))
+    command.set_defaults(func=_cmd_eos_slab)
+
+    command = subparsers.add_parser("eos-sliding", help="Generate sliding optimization cases.")
+    command.add_argument("--selection", required=True)
+    command.add_argument("--mode", choices=["fractional", "absolute"], default="fractional")
+    command.add_argument("--vector", type=float, nargs=2, action="append", required=True, metavar=("A", "B"))
+    command.set_defaults(func=_cmd_eos_sliding)
+
+    command = subparsers.add_parser("distance-current", help="Report current minimum z distance.")
+    command.add_argument("--selection", required=True)
+    command.set_defaults(func=_cmd_distance_current)
+
+    command = subparsers.add_parser("distance-scan", help="Generate distance scan cases.")
+    command.add_argument("--selection", required=True)
+    command.add_argument("--start", type=float, required=True)
+    command.add_argument("--end", type=float, required=True)
+    command.add_argument("--points", type=int, required=True)
+    command.set_defaults(func=_cmd_distance_scan)
+
+    command = subparsers.add_parser("fit-structure", help="Fit completed optimization calculations.")
+    command.add_argument("--mode", choices=["Murnaghan", "Polynomial", "Distance"], required=True)
+    command.add_argument("--selection")
+    command.set_defaults(func=_cmd_fit_structure)
+
+    command = subparsers.add_parser("submit", help="Submit generated jobs with sbatch.")
+    command.add_argument("--mode", choices=["kpt", "opt"], required=True)
+    command.set_defaults(func=_cmd_submit)
+
+    command = subparsers.add_parser("band", help="Plot a SIESTA band structure.")
+    command.add_argument("--bands-path")
+    _add_common_energy_window(command, -2.0, 4.0)
+    command.set_defaults(func=_cmd_band)
+
+    command = subparsers.add_parser("pdos", help="Generate PDOS CSV and plot outputs.")
+    command.add_argument("--pdos-path")
+    command.add_argument("--orbital", action="append", default=[])
+    _add_common_energy_window(command, -4.0, 12.0)
+    command.set_defaults(func=_cmd_pdos)
+
+    command = subparsers.add_parser("pldos", help="Plot projected local DOS.")
+    command.add_argument("--pdos-path")
+    _add_common_energy_window(command, -4.0, 2.0)
+    command.add_argument("--zmin", type=float)
+    command.add_argument("--zmax", type=float)
+    command.add_argument("--broad", type=float, default=0.02)
+    command.add_argument("--npoints", type=int, default=1001)
+    command.set_defaults(func=_cmd_pldos)
+
+    command = subparsers.add_parser("move-structure", help="Translate the origin structure.")
+    command.add_argument("--dx", type=float, required=True)
+    command.add_argument("--dy", type=float, required=True)
+    command.add_argument("--dz", type=float, required=True)
+    command.set_defaults(func=_cmd_move_structure)
+
+    command = subparsers.add_parser("interpolate-structure", help="Generate interpolated structures.")
+    command.add_argument("--initial", required=True)
+    command.add_argument("--final", required=True)
+    command.add_argument("--division-npt", type=int, required=True)
+    command.add_argument("--extrapolate-npt", type=int, default=0)
+    command.set_defaults(func=_cmd_interpolate_structure)
+
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    command = args.command
+
+    try:
+        payload = _success(command, args.func(args))
+    except Exception as exc:
+        print(json.dumps(_failure(command, exc), sort_keys=True), file=sys.stderr)
+        return 1
+
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
