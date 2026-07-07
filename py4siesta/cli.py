@@ -7,7 +7,7 @@ from .operations import siesta_eos
 from .post_process import generate_pdos_csv, plot_band_structure, plot_pldos
 
 
-BANNER = """            \\\///
+BANNER = r"""            \\\///
            / _  _ \\       Hey, you must know what you are doing.
          (| (.)(.) |)     Otherwise you might get wrong results!
  +-----.OOOo--()--oOOO.------------------------------------------+

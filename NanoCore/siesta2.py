@@ -12,7 +12,7 @@ from glob import glob
 
 class Siesta(object):
 
-    """
+    r"""
 Siesta(atoms)
     
     Class for management of SIESTA simulation.
@@ -1457,15 +1457,15 @@ def get_eos(pattern='*', struct_file='STRUCT.fdf'):
     plb.plot(volume,energy,'ro')
     plb.plot(vfit, a*vfit**2 + b*vfit + c,'--',label='parabolic fit')
     plb.plot(vfit, Murnaghan(murnpars,vfit), label='Murnaghan fit')
-    plb.xlabel('Volume ($\AA^3$)')
+    plb.xlabel(r'Volume ($\AA^3$)')
     plb.ylabel('Energy (eV)')
     plb.legend(loc='best')
 
     # add some text to the figure in figure coordinates
     ax = plb.gca()
-    plb.text(0.4,0.5,'Min volume = %1.2f $\AA^3$' % murnpars[3],
+    plb.text(0.4,0.5,r'Min volume = %1.2f $\AA^3$' % murnpars[3],
              transform = ax.transAxes)
-    plb.text(0.4,0.4,'Bulk modulus = %1.2f eV/$\AA^3$ = %1.2f GPa' % (murnpars[1],
+    plb.text(0.4,0.4,r'Bulk modulus = %1.2f eV/$\AA^3$ = %1.2f GPa' % (murnpars[1],
                                                                       murnpars[1]*160.21773)
              , transform = ax.transAxes)
     plb.savefig('a-eos.png')
