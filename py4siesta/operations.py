@@ -167,6 +167,7 @@ class BaseOperation:
 class KPointSamplingOperation(BaseOperation):
     base_dirname = "01.kpoint_sampling"
     output_name = "KPT.fdf"
+    case_name_width = 3
 
     def case_parameters(self, sym=1, kpoints=None):
         if kpoints is None:
@@ -177,7 +178,7 @@ class KPointSamplingOperation(BaseOperation):
         return [list(k) for k in kpoints]
 
     def case_name(self, index, case_parameter):
-        return f"{case_parameter[0]}+{case_parameter[1]}+{case_parameter[2]}"
+        return "+".join(f"{int(value):0{self.case_name_width}d}" for value in case_parameter)
 
     def build_case_input(self, case_parameter):
         return case_parameter
@@ -204,7 +205,7 @@ class KPointAnalysisOperation:
         differences = np.abs(np.diff(energy))
         for index in range(len(differences)):
             if np.all(differences[index:] <= tolerance):
-                return index + 1
+                return index
         return None
 
     def _collect_results(self, base_dir):
