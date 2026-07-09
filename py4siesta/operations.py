@@ -205,7 +205,7 @@ class KPointAnalysisOperation:
         differences = np.abs(np.diff(energy))
         for index in range(len(differences)):
             if np.all(differences[index:] <= tolerance):
-                return index
+                return index+1
         return None
 
     def _collect_results(self, base_dir):
