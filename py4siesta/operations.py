@@ -388,6 +388,8 @@ class DistanceOperation(BaseOperation):
 
 
 class FitOptimizedStructureOperation:
+    BULK_MODULUS_GPA_PER_EV_A3 = 160.21766208
+
     def __init__(self, context: SiestaContext):
         self.context = context
 
@@ -403,6 +405,32 @@ class FitOptimizedStructureOperation:
 
         metadata = json.loads(config_path.read_text())
         return BaseOperation._normalize_scale_mask(metadata.get("scale_mask"), default_mask)
+
+    @classmethod
+    def _murnaghan_parameter_text(cls, parameters):
+        e0, b0, bp, v0 = parameters
+        bulk_modulus_gpa = b0 * cls.BULK_MODULUS_GPA_PER_EV_A3
+        return "\n".join(
+            [
+                f"E0 = {e0:.6f} eV",
+                f"V0 = {v0:.6f} A^3",
+                f"B0 = {b0:.6f} eV/A^3",
+                f"B0 = {bulk_modulus_gpa:.3f} GPa",
+                f"B0' = {bp:.6f}",
+            ]
+        )
+
+    @classmethod
+    def _write_murnaghan_parameters(cls, path, parameters):
+        e0, b0, bp, v0 = parameters
+        bulk_modulus_gpa = b0 * cls.BULK_MODULUS_GPA_PER_EV_A3
+        with Path(path).open("w") as file:
+            file.write("# Murnaghan fitting parameters\n")
+            file.write(f"equilibrium_energy_eV {e0:.10f}\n")
+            file.write(f"equilibrium_volume_A3 {v0:.10f}\n")
+            file.write(f"bulk_modulus_eV_per_A3 {b0:.10f}\n")
+            file.write(f"bulk_modulus_GPa {bulk_modulus_gpa:.10f}\n")
+            file.write(f"bulk_modulus_derivative {bp:.10f}\n")
 
     def run(self, mode="Murnaghan", selection=None):
         struct = self.context.struct.copy()
@@ -500,6 +528,7 @@ class FitOptimizedStructureOperation:
             opt_coeff, ier = leastsq(loss_function, x0, args=(energy, volume))
             opt_volume = opt_coeff[3]
             opt_func = murnaghan(opt_coeff, vfit)
+            parameter_text = self._murnaghan_parameter_text(opt_coeff)
 
             active_directions = int(np.count_nonzero(scale_mask))
             ratio = (opt_volume / init_volume) ** (1 / active_directions)
@@ -509,12 +538,17 @@ class FitOptimizedStructureOperation:
                 pos = factors * atoms[iatom]._position
                 struct._atoms[iatom].set_position(Vector(pos))
             struct._cell = cell * factors[np.newaxis, :]
-            plt.plot(volume, energy, "ro")
+            x_values = volume
+            x_label = "Volume (A^3)"
+            title = "Murnaghan EOS fitting"
+            calculated_label = "Calculated energy"
+            fit_label = "Murnaghan fit"
 
         elif mode == "Polynomial":
             vfit = np.linspace(min(lattice), max(lattice), 100)
             opt_lattice = fminbound(func_poly_4nd, min(lattice), max(lattice))
             opt_func = polynomial(coeff_poly_4nd, vfit)
+            parameter_text = None
 
             ratio = opt_lattice / init_lattice
             factors = BaseOperation._scaling_factors(ratio, scale_mask)
@@ -523,12 +557,17 @@ class FitOptimizedStructureOperation:
                 pos = factors * atoms[iatom]._position
                 struct._atoms[iatom].set_position(Vector(pos))
             struct._cell = cell * factors[np.newaxis, :]
-            plt.plot(lattice, energy, "ro")
+            x_values = lattice
+            x_label = "Lattice parameter (A)"
+            title = "Polynomial EOS fitting"
+            calculated_label = "Calculated energy"
+            fit_label = "Polynomial fit"
 
         elif mode == "Distance":
             vfit = np.linspace(min(lattice), max(lattice), 100)
             opt_distance = fminbound(func_poly_4nd, min(lattice), max(lattice))
             opt_func = polynomial(coeff_poly_4nd, vfit)
+            parameter_text = None
             distance_operation = DistanceOperation(self.context)
             if selection is None:
                 raise ValueError("Distance fitting requires a moving atom selection.")
@@ -547,11 +586,35 @@ class FitOptimizedStructureOperation:
                 [0.0, 0.0, opt_distance - current_distance],
             )
             struct._cell = cell.copy()
-            plt.plot(lattice, energy, "ro")
+            x_values = lattice
+            x_label = "Distance (A)"
+            title = "Distance fitting"
+            calculated_label = "Calculated energy"
+            fit_label = "Polynomial fit"
 
         with working_dir(base_dir):
-            plt.plot(vfit, opt_func)
+            plt.figure()
+            plt.plot(x_values, energy, "ro", label=calculated_label)
+            plt.plot(vfit, opt_func, label=fit_label)
+            plt.xlabel(x_label)
+            plt.ylabel("Total energy (eV)")
+            plt.title(title)
+            plt.grid(True, alpha=0.3)
+            if parameter_text:
+                plt.gca().text(
+                    0.03,
+                    0.97,
+                    parameter_text,
+                    transform=plt.gca().transAxes,
+                    verticalalignment="top",
+                    bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8},
+                )
+                self._write_murnaghan_parameters("eos_fitting_parameters.dat", opt_coeff)
+                print(parameter_text)
+            plt.legend()
+            plt.tight_layout()
             plt.savefig("eos_fitting.png")
+            plt.close()
 
             copy_contents(self.context.origin_dir, optimized_dir)
             with working_dir(optimized_dir):
