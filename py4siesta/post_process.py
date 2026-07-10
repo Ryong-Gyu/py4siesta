@@ -3,7 +3,12 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
+
+_matplotlib_config_dir = Path(tempfile.gettempdir()) / "py4siesta-matplotlib"
+_matplotlib_config_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", str(_matplotlib_config_dir))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -283,8 +288,8 @@ def _resolve_siesta_utility(command_name):
     return utility_dir / str(siesta_util_pdos)
 
 
-def _selection_from_orbital_index(orbital_index):
-    tokens = str(orbital_index).split("_")
+def _selection_from_orbital_token(orbital_token):
+    tokens = str(orbital_token).split("_")
     if not tokens or any(token == "" for token in tokens) or len(tokens) > 4:
         raise ValueError(
             "Orbital selection must use atom_or_species[_n[_l[_m]]], e.g. Ba_0, C_2_1_0, or 1_2_1."
@@ -295,7 +300,7 @@ def _selection_from_orbital_index(orbital_index):
         "where n, l, and m are integers; examples: Ba_0, C_2_1_0, or 1_2_1."
     )
     selection = {
-        "output": orbital_index,
+        "output": orbital_token,
         "target": tokens[0],
     }
     try:
@@ -308,6 +313,9 @@ def _selection_from_orbital_index(orbital_index):
     except ValueError:
         raise ValueError(error_message) from None
     return selection
+
+
+_selection_from_orbital_index = _selection_from_orbital_token
 
 
 def _sanitize_pdos_output_token(value):
@@ -327,9 +335,9 @@ def _default_pdos_output_name(selection):
     return "_".join(name_parts)
 
 
-def _normalize_fmpdos_selection(selection):
+def _normalize_pdos_selection(selection):
     if isinstance(selection, str):
-        return _selection_from_orbital_index(selection)
+        return _selection_from_orbital_token(selection)
 
     try:
         target = str(selection["target"]).strip()
@@ -355,7 +363,7 @@ def _normalize_fmpdos_selection(selection):
     return normalized
 
 
-def _run_fmpdos(pdos_file, selection, executable):
+def _run_fmpdos_selection(pdos_file, selection, executable):
     input_lines = [
         pdos_file.name,
         selection["output"],
@@ -377,6 +385,10 @@ def _run_fmpdos(pdos_file, selection, executable):
         check=True,
         stdout=subprocess.DEVNULL,
     )
+
+
+_normalize_fmpdos_selection = _normalize_pdos_selection
+_run_fmpdos = _run_fmpdos_selection
 
 
 def _read_pdos_columns(filename, energy_reference, emin, emax, nspin):
@@ -488,6 +500,7 @@ def _plot_pdos(data, labels, output_path, emin, emax):
 
     ax.axvline(x=0.0, color="k", linestyle="--", linewidth=2.0)
     ax.set_xlim(float(emin), float(emax))
+    ax.set_ylim(bottom=0.0)
     ax.set_xticks(np.linspace(float(emin), float(emax), 5))
     ax.set_xlabel(r"$E-E_V$ (eV)", fontsize=16)
     ax.set_ylabel("DOS (states/eV)", fontsize=16)
@@ -513,7 +526,7 @@ def generate_pdos_csv(
     label = path.name[:-5] if path.name.endswith(".PDOS") else path.stem
     eig_path = _find_matching_file(label, ".EIG", work_dir)
     dos_path = _find_matching_file(label, ".DOS", work_dir)
-    selected_orbitals = [_normalize_fmpdos_selection(selection) for selection in (orbital_indices or [])]
+    selected_orbitals = [_normalize_pdos_selection(selection) for selection in (orbital_indices or [])]
 
     previous_dir = Path.cwd()
     try:
@@ -530,7 +543,7 @@ def generate_pdos_csv(
             output_file = Path(selection["output"])
             if output_file.exists():
                 output_file.unlink()
-            _run_fmpdos(Path(path.name), selection, fmpdos_executable)
+            _run_fmpdos_selection(Path(path.name), selection, fmpdos_executable)
             if not output_file.is_file():
                 raise FileNotFoundError(f"fmpdos did not generate expected output file: {output_file}")
             generated_files.append(output_file)

@@ -3,7 +3,7 @@ import glob
 import numpy as np
 from NanoCore import s2
 
-from .operations import siesta_eos
+from .operations import SiestaWorkflow
 from .post_process import generate_pdos_csv, plot_band_structure, plot_pldos
 
 
@@ -131,7 +131,7 @@ def _prompt_repeated_ints(message: str):
         values.append(value)
 
 
-def _prompt_fmpdos_selections():
+def _prompt_pdos_selections():
     print("Input fmpdos selections for PDOS extraction.")
     print("Use atom number, chemical label, or 0 for all atoms.")
     print("Use n=0 for all n, l=-1 for all l, or m=9 for all m.")
@@ -156,6 +156,10 @@ def _prompt_fmpdos_selections():
                 selection["m"] = _prompt_int("Extract data for m= ... (9 for all m): ")
 
         selections.append(selection)
+
+
+# Backward-compatible private helper name used before the PDOS naming cleanup.
+_prompt_fmpdos_selections = _prompt_pdos_selections
 
 
 def _prompt_direction_mask(message: str, default):
@@ -255,19 +259,19 @@ def _print_origin_structure(struct) -> None:
     struct.__repr__()
 
 
-def _run_generate_geometries_menu(vasp) -> None:
+def _run_generate_geometries_menu(workflow) -> None:
     print(GENERATE_GEOMETRIES_MENU)
     mode = _prompt_int("Select Generate Geometries menu number: ")
 
     if mode == 1:
         _show_section("Move structure")
-        struct = vasp.struct
+        struct = workflow.struct
         dx = _prompt_float("Input displacement dx: ")
         dy = _prompt_float("Input displacement dy: ")
         dz = _prompt_float("Input displacement dz: ")
 
-        struct2 = vasp.move(struct, displacement=np.array([dx, dy, dz]))
-        s2.Siesta(struct2).write_struct()
+        moved_struct = workflow.move(struct, displacement=np.array([dx, dy, dz]))
+        s2.Siesta(moved_struct).write_struct()
 
     elif mode == 2:
         _show_section("Interpolate structure")
@@ -275,7 +279,7 @@ def _run_generate_geometries_menu(vasp) -> None:
         final_path = _prompt_str("Input final structure path (STRUCT.fdf): ")
         division_npt = _prompt_int("Input division npt (>=2): ")
         extrapolate_npt = _prompt_int("Input extrapolate npt (0 for none): ")
-        vasp.interpolate(
+        workflow.interpolate(
             initial_path=initial_path,
             final_path=final_path,
             division_npt=division_npt,
@@ -301,29 +305,29 @@ def main():
         except ValueError:
             mode = None
 
-    vasp = None
+    workflow = None
     if mode not in {0, 11, 12, 13, None}:
-        vasp = siesta_eos()
+        workflow = SiestaWorkflow()
 
-    if mode in {4, 5, 6, 7, 8} and vasp is not None:
-        _print_origin_structure(vasp.struct)
+    if mode in {4, 5, 6, 7, 8} and workflow is not None:
+        _print_origin_structure(workflow.struct)
         print("\n")
 
     if mode == 1:
         _show_section("Bulk K-point sampling")
         kpt = _prompt_repeated_ints("Input k-point value #{index}: ")
-        vasp.kpoint_sampling(kpoints=kpt)
+        workflow.kpoint_sampling(kpoints=kpt)
 
     elif mode == 2:
         _show_section("Slab K-point sampling")
         k_values = _prompt_repeated_ints("Input kx (= ky) value #{index}: ")
         kpt = [[k, k, 1] for k in k_values]
-        vasp.kpoint_sampling(sym=0, kpoints=kpt)
+        workflow.kpoint_sampling(sym=0, kpoints=kpt)
 
     elif mode == 3:
         _show_section("K-point convergence analysis")
         tolerance = _prompt_optional_float("Input total energy tolerance in eV", default=0.01)
-        vasp.kpoint_analysis(tolerance=tolerance)
+        workflow.kpoint_analysis(tolerance=tolerance)
 
     elif mode == 4:
         _show_section("Bulk structure optimization")
@@ -331,7 +335,7 @@ def main():
             "Input bulk expansion direction (x y z)",
             default=[1, 1, 1],
         )
-        vasp.eos_bulk(scale_mask=scale_mask)
+        workflow.eos_bulk(scale_mask=scale_mask)
 
     elif mode == 5:
         _show_section("Slab structure optimization")
@@ -340,11 +344,11 @@ def main():
             {"y", "n"},
         )
         scale_mask = [1, 1, 1] if include_z == "y" else [1, 1, 0]
-        vasp.eos_slab(scale_mask=scale_mask)
+        workflow.eos_slab(scale_mask=scale_mask)
 
     elif mode == 6:
         _show_section("Sliding structure optimization")
-        selection = _prompt_atom_selection(len(vasp.struct))
+        selection = _prompt_atom_selection(len(workflow.struct))
         sliding_mode = _prompt_choice(
             "Input sliding displacement mode (1: fractional, 2: absolute): ",
             {"1", "2"},
@@ -352,22 +356,22 @@ def main():
         displacement_mode = "fractional" if sliding_mode == "1" else "absolute"
         mode_label = "0.25 0.50" if displacement_mode == "fractional" else "1.50 0.00"
         vectors = _prompt_sliding_vectors(mode_label)
-        sliding_cases = _prepare_sliding_cases(vasp.struct, displacement_mode, vectors)
-        vasp.eos_sliding(
+        sliding_cases = _prepare_sliding_cases(workflow.struct, displacement_mode, vectors)
+        workflow.eos_sliding(
             selection=selection,
             sliding_cases=sliding_cases,
         )
 
     elif mode == 7:
         _show_section("Distance structure optimization")
-        selection = _prompt_atom_selection(len(vasp.struct))
-        min_distance = vasp.get_distance_min(selection)
+        selection = _prompt_atom_selection(len(workflow.struct))
+        min_distance = workflow.get_distance_min(selection)
         print(f"Current minimum z distance: {min_distance:.6f}\n")
 
         distance_start = _prompt_float("Input distance start: ")
         distance_end = _prompt_float("Input distance end: ")
         distance_npt = _prompt_int("Input number of distance points: ")
-        vasp.eos_distance(
+        workflow.eos_distance(
             selection=selection,
             distance_range=np.linspace(distance_start, distance_end, distance_npt),
         )
@@ -379,18 +383,18 @@ def main():
         print("3) Distance\n")
         select = _prompt_int("Select fitting mode: ")
         if select == 1:
-            vasp.find_optimized_lattice(mode="Murnaghan")
+            workflow.find_optimized_lattice(mode="Murnaghan")
         elif select == 2:
-            vasp.find_optimized_lattice(mode="Polynomial")
+            workflow.find_optimized_lattice(mode="Polynomial")
         elif select == 3:
-            selection = _prompt_atom_selection(len(vasp.struct), label="moving atom index range")
-            vasp.find_optimized_lattice(mode="Distance", selection=selection)
+            selection = _prompt_atom_selection(len(workflow.struct), label="moving atom index range")
+            workflow.find_optimized_lattice(mode="Distance", selection=selection)
 
     elif mode == 9:
-        vasp.qsub("kpt")
+        workflow.qsub("kpt")
 
     elif mode == 10:
-        vasp.qsub("opt")
+        workflow.qsub("opt")
 
     elif mode == 11:
         _show_section("Plot Band Structure")
@@ -405,7 +409,7 @@ def main():
         _show_section("Generate PDOS CSV")
         emin = _prompt_optional_float("Input minimum energy for PDOS data (eV)", default=-4.0)
         emax = _prompt_optional_float("Input maximum energy for PDOS data (eV)", default=12.0)
-        orbital_indices = _prompt_fmpdos_selections()
+        orbital_indices = _prompt_pdos_selections()
         result = generate_pdos_csv(
             orbital_indices=orbital_indices,
             emin=emin,
@@ -423,7 +427,7 @@ def main():
         print(f"Generated: {result['figure']}, {result['z']}, {result['energy']}, {result['pldos']}")
 
     elif mode == "01":
-        _run_generate_geometries_menu(vasp)
+        _run_generate_geometries_menu(workflow)
 
     elif mode == 0:
         print("Exit py4siesta.")

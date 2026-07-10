@@ -737,7 +737,7 @@ class InterpolateStructureOperation(BaseOperation):
         return self._interpolate_structure(initial_struct, final_struct, ratio)
 
 
-class siesta_eos:
+class SiestaWorkflow:
     def __init__(self):
         self.context = SiestaContext()
         self.root = self.context.root
@@ -791,3 +791,7 @@ class siesta_eos:
             division_npt=division_npt,
             extrapolate_npt=extrapolate_npt,
         )
+
+
+# Backward-compatible name used by older scripts.
+siesta_eos = SiestaWorkflow

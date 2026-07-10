@@ -2,21 +2,15 @@
 
 import argparse
 import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
 
-_matplotlib_config_dir = Path(tempfile.gettempdir()) / "py4siesta-matplotlib"
-_matplotlib_config_dir.mkdir(parents=True, exist_ok=True)
-os.environ.setdefault("MPLCONFIGDIR", str(_matplotlib_config_dir))
-
 from NanoCore import s2
 
 from .cli import _prepare_sliding_cases
-from .operations import siesta_eos
+from .operations import SiestaWorkflow
 from .post_process import generate_pdos_csv, plot_band_structure, plot_pldos
 
 
@@ -74,8 +68,8 @@ def _failure(command, exc):
     }
 
 
-def _tool():
-    return siesta_eos()
+def _workflow():
+    return SiestaWorkflow()
 
 
 def _scale_mask(values):
@@ -83,37 +77,37 @@ def _scale_mask(values):
 
 
 def _cmd_kpoint_bulk(args):
-    _tool().kpoint_sampling(kpoints=args.kpoints)
+    _workflow().kpoint_sampling(kpoints=args.kpoints)
     return {"base_dir": "01.kpoint_sampling", "kpoints": args.kpoints}
 
 
 def _cmd_kpoint_slab(args):
     kpoints = [[value, value, 1] for value in args.kpoints]
-    _tool().kpoint_sampling(sym=0, kpoints=kpoints)
+    _workflow().kpoint_sampling(sym=0, kpoints=kpoints)
     return {"base_dir": "01.kpoint_sampling", "kpoints": kpoints}
 
 
 def _cmd_kpoint_analysis(args):
-    return _tool().kpoint_analysis(tolerance=args.tolerance)
+    return _workflow().kpoint_analysis(tolerance=args.tolerance)
 
 
 def _cmd_eos_bulk(args):
-    tool = _tool()
-    tool.eos_bulk(scale_mask=_scale_mask(args.scale_mask))
+    workflow = _workflow()
+    workflow.eos_bulk(scale_mask=_scale_mask(args.scale_mask))
     return {"base_dir": "02.volume_eos", "scale_mask": _scale_mask(args.scale_mask)}
 
 
 def _cmd_eos_slab(args):
-    tool = _tool()
-    tool.eos_slab(scale_mask=_scale_mask(args.scale_mask))
+    workflow = _workflow()
+    workflow.eos_slab(scale_mask=_scale_mask(args.scale_mask))
     return {"base_dir": "02.slab_eos", "scale_mask": _scale_mask(args.scale_mask)}
 
 
 def _cmd_eos_sliding(args):
-    tool = _tool()
+    workflow = _workflow()
     vectors = [np.array([float(first), float(second)], dtype=float) for first, second in args.vector]
-    sliding_cases = _prepare_sliding_cases(tool.struct, args.mode, vectors)
-    tool.eos_sliding(selection=args.selection, sliding_cases=sliding_cases)
+    sliding_cases = _prepare_sliding_cases(workflow.struct, args.mode, vectors)
+    workflow.eos_sliding(selection=args.selection, sliding_cases=sliding_cases)
     return {
         "base_dir": "02.sliding",
         "selection": args.selection,
@@ -123,13 +117,13 @@ def _cmd_eos_sliding(args):
 
 
 def _cmd_distance_current(args):
-    distance = _tool().get_distance_min(args.selection)
+    distance = _workflow().get_distance_min(args.selection)
     return {"selection": args.selection, "distance": distance}
 
 
 def _cmd_distance_scan(args):
     distance_range = np.linspace(args.start, args.end, args.points)
-    _tool().eos_distance(selection=args.selection, distance_range=distance_range)
+    _workflow().eos_distance(selection=args.selection, distance_range=distance_range)
     return {
         "base_dir": "02.distance",
         "selection": args.selection,
@@ -138,12 +132,12 @@ def _cmd_distance_scan(args):
 
 
 def _cmd_fit_structure(args):
-    _tool().find_optimized_lattice(mode=args.mode, selection=args.selection)
+    _workflow().find_optimized_lattice(mode=args.mode, selection=args.selection)
     return {"mode": args.mode, "selection": args.selection}
 
 
 def _cmd_submit(args):
-    _tool().qsub(args.mode)
+    _workflow().qsub(args.mode)
     return {"mode": args.mode}
 
 
@@ -185,14 +179,14 @@ def _cmd_pldos(args):
 
 
 def _cmd_move_structure(args):
-    tool = _tool()
-    moved = tool.move(tool.struct, displacement=np.array([args.dx, args.dy, args.dz], dtype=float))
+    workflow = _workflow()
+    moved = workflow.move(workflow.struct, displacement=np.array([args.dx, args.dy, args.dz], dtype=float))
     s2.Siesta(moved).write_struct()
     return {"output": "STRUCT.fdf", "displacement": [args.dx, args.dy, args.dz]}
 
 
 def _cmd_interpolate_structure(args):
-    _tool().interpolate(
+    _workflow().interpolate(
         initial_path=args.initial,
         final_path=args.final,
         division_npt=args.division_npt,
