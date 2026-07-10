@@ -20,6 +20,27 @@ from .operations import siesta_eos
 from .post_process import generate_pdos_csv, plot_band_structure, plot_pldos
 
 
+class _ArgumentParser(argparse.ArgumentParser):
+    def parse_args(self, args=None, namespace=None):
+        self._py4siesta_args = list(sys.argv[1:] if args is None else args)
+        return super().parse_args(args, namespace)
+
+    def error(self, message):
+        args = getattr(self, "_py4siesta_args", [])
+        is_pdos_command = (
+            "py4siesta-tool pdos" in self.prog
+            or (args and args[0] == "pdos")
+        )
+        if is_pdos_command and "unrecognized arguments:" in message:
+            message = (
+                f"{message}\n"
+                "For multiple PDOS orbitals, use one --orbital option with space-separated values "
+                "(for example: --orbital Mg_0 O_0), comma-separated values "
+                "(--orbital Mg_0,O_0), or repeat --orbital."
+            )
+        super().error(message)
+
+
 def _jsonable(value):
     if isinstance(value, Path):
         return str(value)
@@ -130,10 +151,22 @@ def _cmd_band(args):
     return plot_band_structure(bands_path=args.bands_path, emin=args.emin, emax=args.emax)
 
 
+def _parse_orbital_arguments(values):
+    orbitals = []
+    for value_group in values or []:
+        group_values = value_group if isinstance(value_group, list) else [value_group]
+        for value in group_values:
+            for orbital in str(value).split(","):
+                orbital = orbital.strip()
+                if orbital:
+                    orbitals.append(orbital)
+    return orbitals
+
+
 def _cmd_pdos(args):
     return generate_pdos_csv(
         pdos_path=args.pdos_path,
-        orbital_indices=args.orbital,
+        orbital_indices=_parse_orbital_arguments(args.orbital),
         emin=args.emin,
         emax=args.emax,
     )
@@ -180,7 +213,7 @@ def _add_common_energy_window(parser, emin, emax):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(
+    parser = _ArgumentParser(
         prog="py4siesta-tool",
         description="Non-interactive JSON tools for py4siesta.",
     )
@@ -237,9 +270,31 @@ def build_parser():
     _add_common_energy_window(command, -2.0, 4.0)
     command.set_defaults(func=_cmd_band)
 
-    command = subparsers.add_parser("pdos", help="Generate PDOS CSV and plot outputs.")
+    command = subparsers.add_parser(
+        "pdos",
+        help="Generate PDOS CSV and plot outputs.",
+        description=(
+            "Generate PDOS CSV and plot outputs. Orbitals use "
+            "atom_or_species[_n[_l[_m]]] format, such as Mg_0, O_0, or C_2_1_0."
+        ),
+        epilog=(
+            "Multiple orbitals may be passed as space-separated values "
+            "(--orbital Mg_0 O_0), comma-separated values (--orbital Mg_0,O_0), "
+            "or repeated options (--orbital Mg_0 --orbital O_0)."
+        ),
+    )
     command.add_argument("--pdos-path")
-    command.add_argument("--orbital", action="append", default=[])
+    command.add_argument(
+        "--orbital",
+        action="append",
+        nargs="+",
+        default=[],
+        metavar="SELECTION",
+        help=(
+            "PDOS orbital selection in atom_or_species[_n[_l[_m]]] format. "
+            "Use spaces, commas, or repeated --orbital options for multiple selections."
+        ),
+    )
     _add_common_energy_window(command, -4.0, 12.0)
     command.set_defaults(func=_cmd_pdos)
 

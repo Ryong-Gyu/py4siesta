@@ -5,6 +5,7 @@ import unittest
 
 from py4siesta import agent_cli
 from py4siesta.operations import KPointAnalysisOperation, KPointSamplingOperation
+from py4siesta.post_process import _friendly_pdos_label, _selection_from_orbital_index
 
 
 class AgentCliTests(unittest.TestCase):
@@ -40,6 +41,45 @@ class AgentCliTests(unittest.TestCase):
         ])
         self.assertEqual(args.command, "eos-sliding")
         self.assertEqual(args.vector, [[0.25, 0.5]])
+
+    def test_pdos_parser_accepts_multiple_orbital_input_forms(self):
+        parser = agent_cli.build_parser()
+
+        args = parser.parse_args(["pdos", "--pdos-path", "MgO.PDOS", "--orbital", "Mg_0", "O_0"])
+        self.assertEqual(agent_cli._parse_orbital_arguments(args.orbital), ["Mg_0", "O_0"])
+
+        args = parser.parse_args(["pdos", "--pdos-path", "MgO.PDOS", "--orbital", "Mg_0,O_0"])
+        self.assertEqual(agent_cli._parse_orbital_arguments(args.orbital), ["Mg_0", "O_0"])
+
+        args = parser.parse_args([
+            "pdos",
+            "--pdos-path",
+            "MgO.PDOS",
+            "--orbital",
+            "Mg_0",
+            "--orbital",
+            "O_0",
+        ])
+        self.assertEqual(agent_cli._parse_orbital_arguments(args.orbital), ["Mg_0", "O_0"])
+
+    def test_pdos_parser_explains_extra_orbital_arguments(self):
+        parser = agent_cli.build_parser()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            parser.parse_args(["pdos", "--pdos-path", "MgO.PDOS", "Mg_0", "O_0"])
+
+        self.assertIn("For multiple PDOS orbitals", stderr.getvalue())
+
+    def test_pdos_orbital_validation_explains_expected_format(self):
+        with self.assertRaisesRegex(ValueError, "where n, l, and m are integers"):
+            _selection_from_orbital_index("Mg_x")
+
+    def test_pdos_plot_labels_use_orbital_names(self):
+        self.assertEqual(_friendly_pdos_label("PDOS_C_1_0"), "C 1s")
+        self.assertEqual(_friendly_pdos_label("C_2_1_0"), "C 2p m=0")
+        self.assertEqual(_friendly_pdos_label("PDOS_O_2_1 spin 2"), "O 2p spin 2")
+        self.assertEqual(_friendly_pdos_label("total spin 1"), "Total spin 1")
 
     def test_missing_band_file_returns_json_error(self):
         stdout = io.StringIO()

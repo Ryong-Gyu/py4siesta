@@ -192,9 +192,11 @@ Examples:
 py4siesta-tool kpoint-bulk --kpoints 2 4 6
 py4siesta-tool eos-sliding --selection 20-30 --mode fractional --vector 0.25 0.50
 py4siesta-tool band --bands-path Solid.bands --emin -2 --emax 4
-py4siesta-tool pdos --pdos-path MgO.PDOS --orbital Mg_0 --emin -4 --emax 12
+py4siesta-tool pdos --pdos-path MgO.PDOS --orbital Mg_0 O_0 --emin -4 --emax 12
 py4siesta-tool pldos --pdos-path Device.PDOS --emin -4 --emax 2
 ```
+
+For `py4siesta-tool pdos`, pass one or more `--orbital` selections in `atom_or_species[_n[_l[_m]]]` format, for example `Mg_0`, `O_0`, or `C_2_1_0`. Multiple selections may be space-separated, comma-separated, or provided with repeated `--orbital` options.
 
 Run `py4siesta-tool --help` or `py4siesta-tool <command> --help` for the full command list and required inputs.
 

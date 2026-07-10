@@ -290,16 +290,23 @@ def _selection_from_orbital_index(orbital_index):
             "Orbital selection must use atom_or_species[_n[_l[_m]]], e.g. Ba_0, C_2_1_0, or 1_2_1."
         )
 
+    error_message = (
+        "Orbital selection must use atom_or_species[_n[_l[_m]]], "
+        "where n, l, and m are integers; examples: Ba_0, C_2_1_0, or 1_2_1."
+    )
     selection = {
         "output": orbital_index,
         "target": tokens[0],
     }
-    if len(tokens) >= 2:
-        selection["n"] = int(tokens[1])
-    if len(tokens) >= 3:
-        selection["l"] = int(tokens[2])
-    if len(tokens) >= 4:
-        selection["m"] = int(tokens[3])
+    try:
+        if len(tokens) >= 2:
+            selection["n"] = int(tokens[1])
+        if len(tokens) >= 3:
+            selection["l"] = int(tokens[2])
+        if len(tokens) >= 4:
+            selection["m"] = int(tokens[3])
+    except ValueError:
+        raise ValueError(error_message) from None
     return selection
 
 
@@ -401,6 +408,61 @@ def _read_pdos_columns(filename, energy_reference, emin, emax, nspin):
     )
 
 
+def _friendly_pdos_label(label):
+    text = str(label).strip()
+    if not text:
+        return text
+
+    spin_suffix = ""
+    spin_match = re.search(r"\s+(spin\s+\d+)$", text, flags=re.IGNORECASE)
+    if spin_match:
+        spin_suffix = f" {spin_match.group(1)}"
+        text = text[: spin_match.start()].strip()
+
+    if text.lower() == "total":
+        return f"Total{spin_suffix}"
+
+    if text.startswith("PDOS_"):
+        text = text[5:]
+
+    tokens = text.split("_")
+    if len(tokens) >= 4:
+        try:
+            target = "_".join(tokens[:-3])
+            n_value = int(tokens[-3])
+            l_value = int(tokens[-2])
+            m_value = int(tokens[-1])
+        except ValueError:
+            pass
+        else:
+            orbital = _orbital_letter(l_value)
+            return f"{target} {n_value}{orbital} m={m_value}{spin_suffix}"
+
+    if len(tokens) < 3:
+        return f"{text}{spin_suffix}"
+
+    try:
+        target = "_".join(tokens[:-2])
+        n_value = int(tokens[-2])
+        l_value = int(tokens[-1])
+    except ValueError:
+        return f"{text}{spin_suffix}"
+
+    return f"{target} {n_value}{_orbital_letter(l_value)}{spin_suffix}"
+
+
+def _orbital_letter(l_value):
+    letters = {
+        0: "s",
+        1: "p",
+        2: "d",
+        3: "f",
+        4: "g",
+        5: "h",
+    }
+    return letters.get(int(l_value), f"l={int(l_value)}")
+
+
 def _plot_pdos(data, labels, output_path, emin, emax):
     fig, ax = plt.subplots(figsize=(5.0, 3.0))
 
@@ -413,8 +475,9 @@ def _plot_pdos(data, labels, output_path, emin, emax):
 
     energy = data[:, 0]
     colors = ["k", "r", "tab:blue", "tab:green", "tab:orange", "tab:purple"]
+    friendly_labels = [_friendly_pdos_label(label) for label in labels]
     for column_index in range(1, data.shape[1]):
-        label = labels[column_index - 1] if column_index - 1 < len(labels) else None
+        label = friendly_labels[column_index - 1] if column_index - 1 < len(friendly_labels) else None
         ax.plot(
             energy,
             data[:, column_index],
@@ -430,7 +493,7 @@ def _plot_pdos(data, labels, output_path, emin, emax):
     ax.set_ylabel("DOS", fontsize=16)
     ax.tick_params(axis="both", labelsize=16)
     if labels:
-        ax.legend(fontsize=9, frameon=False)
+        ax.legend(fontsize=9)
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=300, transparent=True)
