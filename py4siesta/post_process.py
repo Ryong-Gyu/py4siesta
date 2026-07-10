@@ -489,8 +489,8 @@ def _plot_pdos(data, labels, output_path, emin, emax):
     ax.axvline(x=0.0, color="k", linestyle="--", linewidth=2.0)
     ax.set_xlim(float(emin), float(emax))
     ax.set_xticks(np.linspace(float(emin), float(emax), 5))
-    ax.set_xlabel(r"$E-E_V$", fontsize=16)
-    ax.set_ylabel("DOS", fontsize=16)
+    ax.set_xlabel(r"$E-E_V$ (eV)", fontsize=16)
+    ax.set_ylabel("DOS (states/eV)", fontsize=16)
     ax.tick_params(axis="both", labelsize=16)
     if labels:
         ax.legend(fontsize=9)
