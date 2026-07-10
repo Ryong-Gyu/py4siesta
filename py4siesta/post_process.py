@@ -144,7 +144,7 @@ def plot_band_structure(bands_path=None, emin=-2.0, emax=4.0, output_path="band.
     ax.set_ylim(float(emin), float(emax))
     ax.set_xticks(data.special_k)
     ax.set_xticklabels(data.labels, fontsize=16)
-    ax.set_ylabel(r"$E-E_V$", fontsize=16)
+    ax.set_ylabel(r"$E-E_V (eV)$", fontsize=16)
     ax.tick_params(axis="y", labelsize=16)
 
     for kpoint in data.special_k:
